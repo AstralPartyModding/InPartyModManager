@@ -1,0 +1,70 @@
+# .NET Core / .NET
+[Bb]in/
+[Oo]bj/
+*.dll
+*.exe
+*.pdb
+*.log
+
+# Visual Studio
+.vs/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# Build results
+[Dd]ebug/
+[Rr]elease/
+x64/
+x86/
+
+# Publish output
+publish/
+*_Publish/
+
+# Backup files
+data/backups/*
+!data/backups/.gitkeep
+
+# Mod states
+mod_states.txt
+
+# User profiles (keep default, ignore user data)
+profiles/*.json
+!profiles/.gitkeep
+
+# OS generated files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDE
+.idea/
+*.iml
+*.swp
+*.swo
+*~
+
+# NuGet
+*.nupkg
+*.snupkg
+packages/
+
+# Test results
+[Tt]est[Rr]esult*/
+[Bb]uild[Ll]og.*
+
+# Temporary files
+*.tmp
+__pycache__/
+*.pyc
+
+# Local config
+config.json
+
+# Local documentation
+docs/
+
+# Local mods (for testing)
+mods/

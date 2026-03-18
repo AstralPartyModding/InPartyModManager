@@ -1,0 +1,30 @@
+{
+  "console": false,
+  "wait_with_hook": {
+    "secs": 0,
+    "nanos": 250000000
+  },
+  "reload_config_keys": [
+    "VK_CONTROL",
+    "VK_SHIFT",
+    "VK_R",
+    "VK_RBUTTON"
+  ],
+  "startup_state": null,
+  "speed_states": [
+    {
+      "keys": [
+        "VK_RBUTTON"
+      ],
+      "speed": 2.5,
+      "is_toggle": true
+    },
+    {
+      "keys": [
+        "VK_R"
+      ],
+      "speed": 2.5,
+      "is_toggle": true
+    }
+  ]
+}

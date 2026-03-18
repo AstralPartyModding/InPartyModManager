@@ -1,0 +1,34 @@
+name: .NET Build
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v3
+      with:
+        dotnet-version: '8.0.x'
+
+    - name: Restore dependencies
+      run: dotnet restore src/AstralPartyModManager.csproj
+
+    - name: Build
+      run: dotnet build src/AstralPartyModManager.csproj --no-restore
+
+    - name: Publish
+      run: dotnet publish src/AstralPartyModManager.csproj -c Release -o ./publish
+
+    - name: Upload artifact
+      uses: actions/upload-artifact@v3
+      with:
+        name: AstralPartyModManager
+        path: ./publish
