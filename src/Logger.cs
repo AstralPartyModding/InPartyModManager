@@ -1,30 +1,34 @@
-using System;
-using System.IO;
+// <copyright file="Logger.cs" company="PlaceholderCompany">
+// Copyright (c) PlaceholderCompany. All rights reserved.
+// </copyright>
 
 namespace AstralPartyModManager
 {
+    using System;
+    using System.IO;
+
     // 静态日志记录器
     public static class Logger
     {
-        private static readonly string _logPath;
-        private static readonly object _lockObj = new();
+        private static readonly string LogPath;
+        private static readonly object LockObj = new();
 
         static Logger()
         {
-            _logPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "mod_manager.log");
+            LogPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "mod_manager.log");
         }
 
         public static void Info(string message) => Log("INFO", message);
 
         public static void Warning(string message) => Log("WARN", message);
 
-        public static void Warning(string message, Exception ex)
-            => Log("WARN", $"{message}: {ex?.Message}");
+        public static void Warning(string message, Exception ex) =>
+            Log("WARN", $"{message}: {ex?.Message}");
 
         public static void Error(string message) => Log("ERROR", message);
 
-        public static void Error(string message, Exception ex)
-            => Log("ERROR", $"{message}: {ex?.Message}{Environment.NewLine}{ex?.StackTrace}");
+        public static void Error(string message, Exception ex) =>
+            Log("ERROR", $"{message}: {ex?.Message}{Environment.NewLine}{ex?.StackTrace}");
 
         public static void Debug(string message) => Log("DEBUG", message);
 
@@ -32,11 +36,11 @@ namespace AstralPartyModManager
         {
             try
             {
-                lock (_lockObj)
+                lock (LockObj)
                 {
                     var timestamp = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.fff");
                     var logLine = $"[{timestamp}] [{level}] {message}{Environment.NewLine}";
-                    File.AppendAllText(_logPath, logLine);
+                    File.AppendAllText(LogPath, logLine);
                 }
             }
             catch
@@ -49,11 +53,11 @@ namespace AstralPartyModManager
         {
             try
             {
-                lock (_lockObj)
+                lock (LockObj)
                 {
-                    if (File.Exists(_logPath))
+                    if (File.Exists(LogPath))
                     {
-                        File.Delete(_logPath);
+                        File.Delete(LogPath);
                     }
                 }
             }

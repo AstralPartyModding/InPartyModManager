@@ -1,49 +1,53 @@
-using System;
-using System.Collections.Generic;
-using System.IO;
-using System.Linq;
+// <copyright file="ModStateManager.cs" company="PlaceholderCompany">
+// Copyright (c) PlaceholderCompany. All rights reserved.
+// </copyright>
 
 namespace AstralPartyModManager
 {
+    using System;
+    using System.Collections.Generic;
+    using System.IO;
+    using System.Linq;
+
     // Mod 状态管理器 - 跟踪和管理 Mod 的启用状态
     public class ModStateManager
     {
-        private readonly string _stateFilePath;
-        private Dictionary<string, bool> _modStates = new();
+        private readonly string stateFilePath;
+        private Dictionary<string, bool> modStates = new();
 
         public ModStateManager(string stateFilePath)
         {
-            _stateFilePath = stateFilePath;
-            _modStates = LoadStates();
+            this.stateFilePath = stateFilePath;
+            this.modStates = this.LoadStates();
         }
 
         // 获取 Mod 启用状态
         public bool IsEnabled(string modName)
         {
-            return _modStates.TryGetValue(modName, out bool enabled) && enabled;
+            return this.modStates.TryGetValue(modName, out bool enabled) && enabled;
         }
 
         // 设置 Mod 启用状态
         public void SetEnabled(string modName, bool enabled)
         {
-            _modStates[modName] = enabled;
-            SaveStates();
+            this.modStates[modName] = enabled;
+            this.SaveStates();
         }
 
         // 获取所有启用的 Mod 名称
         public List<string> GetEnabledMods()
         {
-            return _modStates.Where(kvp => kvp.Value).Select(kvp => kvp.Key).ToList();
+            return this.modStates.Where(kvp => kvp.Value).Select(kvp => kvp.Key).ToList();
         }
 
         // 加载状态
         private Dictionary<string, bool> LoadStates()
         {
-            if (File.Exists(_stateFilePath))
+            if (File.Exists(this.stateFilePath))
             {
                 try
                 {
-                    var lines = File.ReadAllLines(_stateFilePath);
+                    var lines = File.ReadAllLines(this.stateFilePath);
                     var states = new Dictionary<string, bool>();
                     foreach (var line in lines)
                     {
@@ -53,6 +57,7 @@ namespace AstralPartyModManager
                             states[parts[0]] = enabled;
                         }
                     }
+
                     return states;
                 }
                 catch { }
@@ -66,8 +71,8 @@ namespace AstralPartyModManager
         {
             try
             {
-                var lines = _modStates.Select(kvp => $"{kvp.Key}={kvp.Value}");
-                File.WriteAllLines(_stateFilePath, lines);
+                var lines = this.modStates.Select(kvp => $"{kvp.Key}={kvp.Value}");
+                File.WriteAllLines(this.stateFilePath, lines);
             }
             catch { }
         }

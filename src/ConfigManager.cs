@@ -1,83 +1,123 @@
-using System;
-using System.IO;
-using System.Text.Json;
+// <copyright file="ConfigManager.cs" company="PlaceholderCompany">
+// Copyright (c) PlaceholderCompany. All rights reserved.
+// </copyright>
 
 namespace AstralPartyModManager
 {
+    using System;
+    using System.IO;
+    using System.Text.Json;
+
     // 应用程序配置管理器
     public class ConfigManager
     {
-        private readonly string _configPath;
-        private AppConfig _config;
+        private readonly string configPath;
+        private AppConfig config;
 
         public ConfigManager(string configPath)
         {
-            _configPath = configPath;
-            _config = LoadConfig();
+            this.configPath = configPath;
+            this.config = this.LoadConfig();
         }
 
         public string GamePath
         {
-            get => _config.GamePath;
-            set { _config.GamePath = value; SaveConfig(); }
+            get => this.config.GamePath;
+            set
+            {
+                this.config.GamePath = value;
+                this.SaveConfig();
+            }
         }
 
         public string ModPath
         {
-            get => _config.ModPath;
-            set { _config.ModPath = value; SaveConfig(); }
+            get => this.config.ModPath;
+            set
+            {
+                this.config.ModPath = value;
+                this.SaveConfig();
+            }
         }
 
         public bool BackupEnabled
         {
-            get => _config.BackupEnabled;
-            set { _config.BackupEnabled = value; SaveConfig(); }
+            get => this.config.BackupEnabled;
+            set
+            {
+                this.config.BackupEnabled = value;
+                this.SaveConfig();
+            }
         }
 
         public bool AutoDetectConflicts
         {
-            get => _config.AutoDetectConflicts;
-            set { _config.AutoDetectConflicts = value; SaveConfig(); }
+            get => this.config.AutoDetectConflicts;
+            set
+            {
+                this.config.AutoDetectConflicts = value;
+                this.SaveConfig();
+            }
         }
 
         public bool DebugMode
         {
-            get => _config.DebugMode;
-            set { _config.DebugMode = value; SaveConfig(); }
+            get => this.config.DebugMode;
+            set
+            {
+                this.config.DebugMode = value;
+                this.SaveConfig();
+            }
         }
 
         private AppConfig LoadConfig()
         {
-            if (File.Exists(_configPath))
+            if (File.Exists(this.configPath))
             {
                 try
                 {
-                    var json = File.ReadAllText(_configPath);
+                    var json = File.ReadAllText(this.configPath);
                     var config = JsonSerializer.Deserialize<AppConfig>(json);
                     if (config != null)
                     {
-                        if (!string.IsNullOrEmpty(config.GamePath) && !Path.IsPathRooted(config.GamePath))
+                        if (
+                            !string.IsNullOrEmpty(config.GamePath)
+                            && !Path.IsPathRooted(config.GamePath)
+                        )
                         {
-                            config.GamePath = Path.GetFullPath(Path.Combine(
-                                AppDomain.CurrentDomain.BaseDirectory, config.GamePath));
+                            config.GamePath = Path.GetFullPath(
+                                Path.Combine(AppDomain.CurrentDomain.BaseDirectory, config.GamePath)
+                            );
                         }
-                        if (!string.IsNullOrEmpty(config.ModPath) && !Path.IsPathRooted(config.ModPath))
+
+                        if (
+                            !string.IsNullOrEmpty(config.ModPath)
+                            && !Path.IsPathRooted(config.ModPath)
+                        )
                         {
-                            config.ModPath = Path.GetFullPath(Path.Combine(
-                                AppDomain.CurrentDomain.BaseDirectory, config.ModPath));
+                            config.ModPath = Path.GetFullPath(
+                                Path.Combine(AppDomain.CurrentDomain.BaseDirectory, config.ModPath)
+                            );
                         }
+
                         return config;
                     }
                 }
-                catch { /* ignore load error */ }
+                catch
+                { /* ignore load error */
+                }
             }
 
             return new AppConfig
             {
-                GamePath = Path.GetFullPath(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "..")),
-                ModPath = Path.GetFullPath(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "..", "mods")),
+                GamePath = Path.GetFullPath(
+                    Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "..")
+                ),
+                ModPath = Path.GetFullPath(
+                    Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "..", "mods")
+                ),
                 BackupEnabled = true,
-                AutoDetectConflicts = true
+                AutoDetectConflicts = true,
             };
         }
 
@@ -85,34 +125,37 @@ namespace AstralPartyModManager
         {
             try
             {
-                var json = JsonSerializer.Serialize(_config, new JsonSerializerOptions
-                {
-                    WriteIndented = true
-                });
-                File.WriteAllText(_configPath, json);
+                var json = JsonSerializer.Serialize(
+                    this.config,
+                    new JsonSerializerOptions { WriteIndented = true }
+                );
+                File.WriteAllText(this.configPath, json);
             }
-            catch { /* ignore save error */ }
+            catch
+            { /* ignore save error */
+            }
         }
 
         public bool ValidatePaths(out string errorMessage)
         {
             errorMessage = string.Empty;
 
-            if (!Directory.Exists(GamePath))
+            if (!Directory.Exists(this.GamePath))
             {
-                errorMessage = $"游戏目录不存在：{GamePath}";
+                errorMessage = $"游戏目录不存在：{this.GamePath}";
                 return false;
             }
 
-            if (!Directory.Exists(ModPath))
+            if (!Directory.Exists(this.ModPath))
             {
-                errorMessage = $"Mods 目录不存在：{ModPath}";
+                errorMessage = $"Mods 目录不存在：{this.ModPath}";
                 return false;
             }
 
-            if (!File.Exists(Path.Combine(GamePath, "AstralParty_CN.exe")))
+            if (!File.Exists(Path.Combine(this.GamePath, "AstralParty_CN.exe")))
             {
-                errorMessage = "游戏目录不正确：在所选路径中找不到 AstralParty_CN.exe\n\n请选择包含 AstralParty_CN.exe 的游戏根目录";
+                errorMessage =
+                    "游戏目录不正确：在所选路径中找不到 AstralParty_CN.exe\n\n请选择包含 AstralParty_CN.exe 的游戏根目录";
                 return false;
             }
 
@@ -122,9 +165,13 @@ namespace AstralPartyModManager
         private class AppConfig
         {
             public string GamePath { get; set; } = string.Empty;
+
             public string ModPath { get; set; } = string.Empty;
+
             public bool BackupEnabled { get; set; } = true;
+
             public bool AutoDetectConflicts { get; set; } = true;
+
             public bool DebugMode { get; set; } = false;
         }
     }

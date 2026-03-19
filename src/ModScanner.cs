@@ -1,16 +1,22 @@
-using System;
-using System.Collections.Generic;
-using System.IO;
-using System.Linq;
-using System.Text.Json;
+// <copyright file="ModScanner.cs" company="PlaceholderCompany">
+// Copyright (c) PlaceholderCompany. All rights reserved.
+// </copyright>
 
 namespace AstralPartyModManager
 {
+    using System;
+    using System.Collections.Generic;
+    using System.IO;
+    using System.Linq;
+    using System.Text.Json;
+
     // Mod 目标配置
     public class ModTarget
     {
         public string Type { get; set; } = string.Empty;
+
         public string Source { get; set; } = string.Empty;
+
         public string TargetPath { get; set; } = string.Empty;
     }
 
@@ -18,49 +24,71 @@ namespace AstralPartyModManager
     public class ModInfo
     {
         public string Name { get; set; } = "未知 Mod";
+
         public string Author { get; set; } = "未知作者";
+
         public string Version { get; set; } = "1.0.0";
+
         public string Description { get; set; } = string.Empty;
+
         public string FolderPath { get; set; } = string.Empty;
+
         public List<string> TargetFiles { get; set; } = new();
+
         public List<ModTarget> Targets { get; set; } = new();
+
         public ModType Type { get; set; } = ModType.Unknown;
+
         public List<string> Conflicts { get; set; } = new();
+
         public DateTime UpdateTime { get; set; } = DateTime.MinValue;
+
         public bool IsDeprecated { get; set; }
+
         public string DeprecatedReason { get; set; } = string.Empty;
+
         public string GameVersion { get; set; } = string.Empty;
+
         public List<string> Tags { get; set; } = new();
+
         public string ScanError { get; set; } = string.Empty;
 
         public bool IsValid(out string errorMessage)
         {
-            if (string.IsNullOrEmpty(FolderPath) || !Directory.Exists(FolderPath))
+            if (string.IsNullOrEmpty(this.FolderPath) || !Directory.Exists(this.FolderPath))
             {
                 errorMessage = "Mod 文件夹不存在";
                 return false;
             }
 
-            if (Type == ModType.Unknown)
+            if (this.Type == ModType.Unknown)
             {
                 errorMessage = "不支持的 Mod 类型（视为已弃用）";
-                IsDeprecated = true;
-                DeprecatedReason = "不支持的 Mod 类型";
+                this.IsDeprecated = true;
+                this.DeprecatedReason = "不支持的 Mod 类型";
+
                 // 不返回 false，仍然加载但标记为弃用
             }
 
             // Comprehensive 类型不需要 TargetFiles，它使用 Targets 配置
-            if (Type != ModType.Comprehensive && (TargetFiles == null || TargetFiles.Count == 0))
+            if (
+                this.Type != ModType.Comprehensive
+                && (this.TargetFiles == null || this.TargetFiles.Count == 0)
+            )
             {
                 // 如果是 Comprehensive 但 Targets 也是空的，才认为无效
-                if (Type != ModType.Comprehensive || Targets == null || Targets.Count == 0)
+                if (
+                    this.Type != ModType.Comprehensive
+                    || this.Targets == null
+                    || this.Targets.Count == 0
+                )
                 {
                     errorMessage = "Mod 没有目标文件";
                     return false;
                 }
             }
 
-            errorMessage = "";
+            errorMessage = string.Empty;
             return true;
         }
     }
@@ -71,51 +99,55 @@ namespace AstralPartyModManager
         Addressables,
         Voice,
         Plugin,
-        Comprehensive
+        Comprehensive,
     }
 
     // 扫描结果
     public class ScanResult
     {
         public List<ModInfo> Mods { get; set; } = new();
+
         public List<string> Errors { get; set; } = new();
+
         public int TotalFolders { get; set; }
+
         public int SuccessCount { get; set; }
+
         public int FailedCount { get; set; }
     }
 
     // Mod 扫描器
     public class ModScanner
     {
-        private readonly string _modPath;
+        private readonly string modPath;
 
         public ModScanner(string modPath)
         {
-            _modPath = modPath;
+            this.modPath = modPath;
         }
 
         public List<ModInfo> ScanMods()
         {
-            var result = ScanModsDetailed();
+            var result = this.ScanModsDetailed();
             return result.Mods;
         }
 
         public ScanResult ScanModsDetailed()
         {
             var result = new ScanResult();
-            Logger.Info($"开始扫描 Mod 目录：{_modPath}");
+            Logger.Info($"开始扫描 Mod 目录：{this.modPath}");
 
-            if (!Directory.Exists(_modPath))
+            if (!Directory.Exists(this.modPath))
             {
-                Logger.Error($"Mod 目录不存在：{_modPath}");
-                result.Errors.Add($"Mod 目录不存在：{_modPath}");
+                Logger.Error($"Mod 目录不存在：{this.modPath}");
+                result.Errors.Add($"Mod 目录不存在：{this.modPath}");
                 return result;
             }
 
             string[] directories;
             try
             {
-                directories = Directory.GetDirectories(_modPath);
+                directories = Directory.GetDirectories(this.modPath);
             }
             catch (Exception ex)
             {
@@ -131,7 +163,7 @@ namespace AstralPartyModManager
             {
                 try
                 {
-                    var modInfo = ParseModFolder(dir);
+                    var modInfo = this.ParseModFolder(dir);
                     if (modInfo != null)
                     {
                         if (modInfo.IsValid(out string errorMsg))
@@ -167,7 +199,7 @@ namespace AstralPartyModManager
             var modInfo = new ModInfo
             {
                 FolderPath = folderPath,
-                Name = folderName  // 默认始终使用文件夹名称
+                Name = folderName, // 默认始终使用文件夹名称
             };
 
             try
@@ -185,6 +217,7 @@ namespace AstralPartyModManager
                 try
                 {
                     ParseModJson(modJsonPath, modInfo);
+
                     // 如果解析后名称为空，恢复为文件夹名称
                     if (string.IsNullOrWhiteSpace(modInfo.Name))
                     {
@@ -195,12 +228,14 @@ namespace AstralPartyModManager
                 {
                     Logger.Warning($"解析 mod.json 失败：{modJsonPath}", ex);
                     modInfo.ScanError = $"mod.json 解析失败：{ex.Message}";
+
                     // 解析失败时保持使用文件夹名称
                 }
             }
             else
             {
                 InferModInfo(folderPath, modInfo);
+
                 // 如果推断后名称为空，恢复为文件夹名称
                 if (string.IsNullOrWhiteSpace(modInfo.Name))
                 {
@@ -208,21 +243,31 @@ namespace AstralPartyModManager
                 }
             }
 
-            ScanTargetFiles(folderPath, modInfo);
+            this.ScanTargetFiles(folderPath, modInfo);
             ValidateTargetFiles(modInfo);
 
             return modInfo;
         }
 
-        private void ParseModJson(string jsonPath, ModInfo modInfo)
+        private static void ParseModJson(string jsonPath, ModInfo modInfo)
         {
             string json = File.ReadAllText(jsonPath, System.Text.Encoding.UTF8);
-            string jsonWithoutComments = System.Text.RegularExpressions.Regex.Replace(json, @"//.*$", "", System.Text.RegularExpressions.RegexOptions.Multiline);
+            string jsonWithoutComments = System.Text.RegularExpressions.Regex.Replace(
+                json,
+                @"//.*$",
+                string.Empty,
+                System.Text.RegularExpressions.RegexOptions.Multiline
+            );
 
             var options = new JsonSerializerOptions
             {
                 PropertyNameCaseInsensitive = true,
-                Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter(System.Text.Json.JsonNamingPolicy.CamelCase) }
+                Converters =
+                {
+                    new System.Text.Json.Serialization.JsonStringEnumConverter(
+                        System.Text.Json.JsonNamingPolicy.CamelCase
+                    ),
+                },
             };
 
             try
@@ -235,19 +280,23 @@ namespace AstralPartyModManager
                     {
                         modInfo.Name = tempMod.Name;
                     }
+
                     if (!string.IsNullOrWhiteSpace(tempMod.Author))
                     {
                         modInfo.Author = tempMod.Author;
                     }
+
                     if (!string.IsNullOrWhiteSpace(tempMod.Version))
                     {
                         modInfo.Version = tempMod.Version;
                     }
+
                     modInfo.Description = tempMod.Description ?? modInfo.Description;
                     if (tempMod.Type != ModType.Unknown)
                     {
                         modInfo.Type = tempMod.Type;
                     }
+
                     modInfo.GameVersion = tempMod.GameVersion ?? modInfo.GameVersion;
                     modInfo.Tags = tempMod.Tags ?? new List<string>();
                     modInfo.Conflicts = tempMod.Conflicts ?? new List<string>();
@@ -262,8 +311,9 @@ namespace AstralPartyModManager
                         modInfo.Targets = tempMod.Targets;
                     }
 
-                    modInfo.IsDeprecated = tempMod.IsDeprecated ||
-                        (tempMod.Tags != null && tempMod.Tags.Contains("deprecated"));
+                    modInfo.IsDeprecated =
+                        tempMod.IsDeprecated
+                        || (tempMod.Tags != null && tempMod.Tags.Contains("deprecated"));
                     if (!string.IsNullOrWhiteSpace(tempMod.DeprecatedReason))
                     {
                         modInfo.DeprecatedReason = tempMod.DeprecatedReason;
@@ -276,26 +326,35 @@ namespace AstralPartyModManager
             }
         }
 
-        private void InferModInfo(string folderPath, ModInfo modInfo)
+        private static void InferModInfo(string folderPath, ModInfo modInfo)
         {
             var readmePatterns = new[] { "*.txt", "*.md" };
             foreach (var pattern in readmePatterns)
             {
-                var readmePath = Directory.GetFiles(folderPath, pattern)
-                    .FirstOrDefault(f => f.Contains("说明") || f.Contains("食用方法") || f.Contains("README"));
+                var readmePath = Directory
+                    .GetFiles(folderPath, pattern)
+                    .FirstOrDefault(f =>
+                        f.Contains("说明") || f.Contains("食用方法") || f.Contains("README")
+                    );
 
                 if (readmePath != null)
                 {
                     try
                     {
                         var content = File.ReadAllText(readmePath);
-                        var authorMatch = System.Text.RegularExpressions.Regex.Match(content, @"(?:作者 | 制作 | By)[:：]\s*(.+)");
+                        var authorMatch = System.Text.RegularExpressions.Regex.Match(
+                            content,
+                            @"(?:作者 | 制作 | By)[:：]\s*(.+)"
+                        );
                         if (authorMatch.Success)
                         {
                             modInfo.Author = authorMatch.Groups[1].Value.Trim();
                         }
 
-                        var versionMatch = System.Text.RegularExpressions.Regex.Match(content, @"[vV](\d+\.\d+\.\d+)");
+                        var versionMatch = System.Text.RegularExpressions.Regex.Match(
+                            content,
+                            @"[vV](\d+\.\d+\.\d+)"
+                        );
                         if (versionMatch.Success)
                         {
                             modInfo.Version = versionMatch.Groups[1].Value;
@@ -305,6 +364,7 @@ namespace AstralPartyModManager
                     {
                         Logger.Warning($"读取说明文件失败：{readmePath}", ex);
                     }
+
                     break;
                 }
             }
@@ -312,7 +372,7 @@ namespace AstralPartyModManager
             InferModType(folderPath, modInfo);
         }
 
-        private void InferModType(string folderPath, ModInfo modInfo)
+        private static void InferModType(string folderPath, ModInfo modInfo)
         {
             string folderName = Path.GetFileName(folderPath).ToLower();
 
@@ -325,13 +385,18 @@ namespace AstralPartyModManager
                     modInfo.Type = ModType.Addressables;
                     return;
                 }
+
                 if (Directory.Exists(Path.Combine(astralDir, "Plugins")))
                 {
                     modInfo.Type = ModType.Plugin;
                     return;
                 }
 
-                var dllFiles = Directory.GetFiles(astralDir, "*.dll", SearchOption.TopDirectoryOnly);
+                var dllFiles = Directory.GetFiles(
+                    astralDir,
+                    "*.dll",
+                    SearchOption.TopDirectoryOnly
+                );
                 if (dllFiles.Length > 0)
                 {
                     modInfo.Type = ModType.Plugin;
@@ -351,7 +416,11 @@ namespace AstralPartyModManager
                 return;
             }
 
-            if (folderName.Contains("加速") || folderName.Contains("插件") || folderName.Contains("plugin"))
+            if (
+                folderName.Contains("加速")
+                || folderName.Contains("插件")
+                || folderName.Contains("plugin")
+            )
             {
                 modInfo.Type = ModType.Plugin;
                 return;
@@ -385,11 +454,19 @@ namespace AstralPartyModManager
                 {
                     ScanStandardDirectory(subdir, modInfo);
                 }
-                else if (subdirName.Contains("模组") || subdirName.Contains("根模组") || subdirName.Contains("根目录替换"))
+                else if (
+                    subdirName.Contains("模组")
+                    || subdirName.Contains("根模组")
+                    || subdirName.Contains("根目录替换")
+                )
                 {
                     ScanDirectoryToTargetFiles(subdir, modInfo);
                 }
-                else if (subdirName.Contains("纯语音替换") || subdirName.Contains("适配动画的语音替换") || subdirName.Contains("__data"))
+                else if (
+                    subdirName.Contains("纯语音替换")
+                    || subdirName.Contains("适配动画的语音替换")
+                    || subdirName.Contains("__data")
+                )
                 {
                     modInfo.Type = ModType.Voice;
                     ScanDirectoryToTargetFiles(subdir, modInfo);
@@ -402,7 +479,7 @@ namespace AstralPartyModManager
             }
         }
 
-        private void ScanDirectoryToTargetFiles(string dirPath, ModInfo modInfo)
+        private static void ScanDirectoryToTargetFiles(string dirPath, ModInfo modInfo)
         {
             try
             {
@@ -410,15 +487,27 @@ namespace AstralPartyModManager
                 foreach (var file in files)
                 {
                     string fileName = Path.GetFileName(file).ToLower();
-                    if (fileName == "mod.json" || fileName == "readme.md" || fileName == "readme.txt")
+                    if (
+                        fileName == "mod.json"
+                        || fileName == "readme.md"
+                        || fileName == "readme.txt"
+                    )
                     {
                         continue;
                     }
-                    if (fileName.EndsWith(".txt") && 
-                        (fileName.Contains("使用") || fileName.Contains("说明") || fileName.Contains("方法")))
+
+                    if (
+                        fileName.EndsWith(".txt")
+                        && (
+                            fileName.Contains("使用")
+                            || fileName.Contains("说明")
+                            || fileName.Contains("方法")
+                        )
+                    )
                     {
                         continue;
                     }
+
                     modInfo.TargetFiles.Add(file);
                 }
             }
@@ -428,7 +517,7 @@ namespace AstralPartyModManager
             }
         }
 
-        private void ScanModRootToTargetFiles(string folderPath, ModInfo modInfo)
+        private static void ScanModRootToTargetFiles(string folderPath, ModInfo modInfo)
         {
             try
             {
@@ -436,19 +525,32 @@ namespace AstralPartyModManager
                 foreach (var file in files)
                 {
                     string fileName = Path.GetFileName(file).ToLower();
-                    if (fileName == "mod.json" || fileName == "readme.md" || fileName == "readme.txt")
+                    if (
+                        fileName == "mod.json"
+                        || fileName == "readme.md"
+                        || fileName == "readme.txt"
+                    )
                     {
                         continue;
                     }
+
                     if (file.Contains("\\docs\\"))
                     {
                         continue;
                     }
-                    if (fileName.EndsWith(".txt") && 
-                        (fileName.Contains("使用") || fileName.Contains("说明") || fileName.Contains("方法")))
+
+                    if (
+                        fileName.EndsWith(".txt")
+                        && (
+                            fileName.Contains("使用")
+                            || fileName.Contains("说明")
+                            || fileName.Contains("方法")
+                        )
+                    )
                     {
                         continue;
                     }
+
                     if (IsValidGameFile(fileName))
                     {
                         modInfo.TargetFiles.Add(file);
@@ -461,13 +563,25 @@ namespace AstralPartyModManager
             }
         }
 
-        private bool IsValidGameFile(string fileName)
+        private static bool IsValidGameFile(string fileName)
         {
-            var validExtensions = new[] { ".bundle", ".dll", ".json", ".bytes", ".png", ".jpg", ".jpeg", ".wav", ".ogg", ".mp3" };
+            var validExtensions = new[]
+            {
+                ".bundle",
+                ".dll",
+                ".json",
+                ".bytes",
+                ".png",
+                ".jpg",
+                ".jpeg",
+                ".wav",
+                ".ogg",
+                ".mp3",
+            };
             return validExtensions.Any(ext => fileName.EndsWith(ext));
         }
 
-        private void ScanStandardDirectory(string dirPath, ModInfo modInfo)
+        private static void ScanStandardDirectory(string dirPath, ModInfo modInfo)
         {
             try
             {
@@ -475,15 +589,27 @@ namespace AstralPartyModManager
                 foreach (var file in files)
                 {
                     string fileName = Path.GetFileName(file).ToLower();
-                    if (fileName == "mod.json" || fileName == "readme.md" || fileName == "readme.txt")
+                    if (
+                        fileName == "mod.json"
+                        || fileName == "readme.md"
+                        || fileName == "readme.txt"
+                    )
                     {
                         continue;
                     }
-                    if (fileName.EndsWith(".txt") && (fileName.Contains("使用") || 
-                        fileName.Contains("说明") || fileName.Contains("方法")))
+
+                    if (
+                        fileName.EndsWith(".txt")
+                        && (
+                            fileName.Contains("使用")
+                            || fileName.Contains("说明")
+                            || fileName.Contains("方法")
+                        )
+                    )
                     {
                         continue;
                     }
+
                     modInfo.TargetFiles.Add(file);
                 }
             }
@@ -493,7 +619,7 @@ namespace AstralPartyModManager
             }
         }
 
-        private void ValidateTargetFiles(ModInfo modInfo)
+        private static void ValidateTargetFiles(ModInfo modInfo)
         {
             var missingFiles = modInfo.TargetFiles.Where(f => !File.Exists(f)).ToList();
             if (missingFiles.Count > 0)
