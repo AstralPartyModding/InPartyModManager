@@ -1,0 +1,32 @@
+name: .NET Build
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+env:
+  SLN: AstralPartyModManager.sln
+  CONFIG: Release
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+    - uses: actions/checkout@v4
+
+    - uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: 8.0.x
+
+    - run: dotnet restore ${{ env.SLN }}
+
+    - run: dotnet build ${{ env.SLN }} -c ${{ env.CONFIG }} --no-restore
+
+    - run: dotnet format ${{ env.SLN }} --verify-no-changes
+
+    - uses: actions/upload-artifact@v4
+      with:
+        name: build
+        path: src/bin/${{ env.CONFIG }}/net8.0-windows/

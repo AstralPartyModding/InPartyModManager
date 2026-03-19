@@ -6,6 +6,14 @@ using System.Text.Json;
 
 namespace AstralPartyModManager
 {
+    // Mod 目标配置
+    public class ModTarget
+    {
+        public string Type { get; set; } = string.Empty;
+        public string Source { get; set; } = string.Empty;
+        public string TargetPath { get; set; } = string.Empty;
+    }
+
     // Mod 信息
     public class ModInfo
     {
@@ -15,6 +23,7 @@ namespace AstralPartyModManager
         public string Description { get; set; } = string.Empty;
         public string FolderPath { get; set; } = string.Empty;
         public List<string> TargetFiles { get; set; } = new();
+        public List<ModTarget> Targets { get; set; } = new();
         public ModType Type { get; set; } = ModType.Unknown;
         public List<string> Conflicts { get; set; } = new();
         public DateTime UpdateTime { get; set; } = DateTime.MinValue;
@@ -37,13 +46,18 @@ namespace AstralPartyModManager
                 errorMessage = "不支持的 Mod 类型（视为已弃用）";
                 IsDeprecated = true;
                 DeprecatedReason = "不支持的 Mod 类型";
-                return false;
+                // 不返回 false，仍然加载但标记为弃用
             }
 
-            if (TargetFiles == null || TargetFiles.Count == 0)
+            // Comprehensive 类型不需要 TargetFiles，它使用 Targets 配置
+            if (Type != ModType.Comprehensive && (TargetFiles == null || TargetFiles.Count == 0))
             {
-                errorMessage = "Mod 没有目标文件";
-                return false;
+                // 如果是 Comprehensive 但 Targets 也是空的，才认为无效
+                if (Type != ModType.Comprehensive || Targets == null || Targets.Count == 0)
+                {
+                    errorMessage = "Mod 没有目标文件";
+                    return false;
+                }
             }
 
             errorMessage = "";
@@ -149,10 +163,11 @@ namespace AstralPartyModManager
 
         private ModInfo ParseModFolder(string folderPath)
         {
+            var folderName = Path.GetFileName(folderPath);
             var modInfo = new ModInfo
             {
                 FolderPath = folderPath,
-                Name = Path.GetFileName(folderPath)
+                Name = folderName  // 默认始终使用文件夹名称
             };
 
             try
@@ -170,16 +185,27 @@ namespace AstralPartyModManager
                 try
                 {
                     ParseModJson(modJsonPath, modInfo);
+                    // 如果解析后名称为空，恢复为文件夹名称
+                    if (string.IsNullOrWhiteSpace(modInfo.Name))
+                    {
+                        modInfo.Name = folderName;
+                    }
                 }
                 catch (Exception ex)
                 {
                     Logger.Warning($"解析 mod.json 失败：{modJsonPath}", ex);
                     modInfo.ScanError = $"mod.json 解析失败：{ex.Message}";
+                    // 解析失败时保持使用文件夹名称
                 }
             }
             else
             {
                 InferModInfo(folderPath, modInfo);
+                // 如果推断后名称为空，恢复为文件夹名称
+                if (string.IsNullOrWhiteSpace(modInfo.Name))
+                {
+                    modInfo.Name = folderName;
+                }
             }
 
             ScanTargetFiles(folderPath, modInfo);
@@ -204,11 +230,24 @@ namespace AstralPartyModManager
                 var tempMod = JsonSerializer.Deserialize<ModInfo>(jsonWithoutComments, options);
                 if (tempMod != null)
                 {
-                    modInfo.Name = string.IsNullOrEmpty(tempMod.Name) ? modInfo.Name : tempMod.Name;
-                    modInfo.Author = tempMod.Author ?? modInfo.Author;
-                    modInfo.Version = tempMod.Version ?? modInfo.Version;
+                    // 只有当 tempMod.Name 不为空时才覆盖
+                    if (!string.IsNullOrWhiteSpace(tempMod.Name))
+                    {
+                        modInfo.Name = tempMod.Name;
+                    }
+                    if (!string.IsNullOrWhiteSpace(tempMod.Author))
+                    {
+                        modInfo.Author = tempMod.Author;
+                    }
+                    if (!string.IsNullOrWhiteSpace(tempMod.Version))
+                    {
+                        modInfo.Version = tempMod.Version;
+                    }
                     modInfo.Description = tempMod.Description ?? modInfo.Description;
-                    modInfo.Type = tempMod.Type != ModType.Unknown ? tempMod.Type : modInfo.Type;
+                    if (tempMod.Type != ModType.Unknown)
+                    {
+                        modInfo.Type = tempMod.Type;
+                    }
                     modInfo.GameVersion = tempMod.GameVersion ?? modInfo.GameVersion;
                     modInfo.Tags = tempMod.Tags ?? new List<string>();
                     modInfo.Conflicts = tempMod.Conflicts ?? new List<string>();
@@ -218,9 +257,17 @@ namespace AstralPartyModManager
                         modInfo.TargetFiles = tempMod.TargetFiles;
                     }
 
+                    if (tempMod.Targets != null && tempMod.Targets.Count > 0)
+                    {
+                        modInfo.Targets = tempMod.Targets;
+                    }
+
                     modInfo.IsDeprecated = tempMod.IsDeprecated ||
                         (tempMod.Tags != null && tempMod.Tags.Contains("deprecated"));
-                    modInfo.DeprecatedReason = tempMod.DeprecatedReason;
+                    if (!string.IsNullOrWhiteSpace(tempMod.DeprecatedReason))
+                    {
+                        modInfo.DeprecatedReason = tempMod.DeprecatedReason;
+                    }
                 }
             }
             catch (JsonException ex)

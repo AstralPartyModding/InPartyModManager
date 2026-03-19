@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Drawing;
+using System.Linq;
 using System.Windows.Forms;
 using System.IO;
 using System.Collections.Generic;
@@ -239,6 +240,20 @@ namespace AstralPartyModManager
 
             lblStatus.Text = $"发现 {mods.Count} 个 Mod";
             AppendDebugLog("--- Mod 列表加载完成 ---");
+
+            // 如果有扫描错误，提示用户
+            if (scanResult.Errors.Any())
+            {
+                string message = $"扫描完成，但发现 {scanResult.Errors.Count} 个错误/警告。\n\n" +
+                                 $"成功加载: {scanResult.SuccessCount} 个\n" +
+                                 $"失败/跳过: {scanResult.FailedCount} 个\n\n" +
+                                 $"请打开 Debug 模式查看详细错误信息。";
+                
+                if (scanResult.FailedCount > 0)
+                {
+                    MessageBox.Show(message, "扫描完成有错误", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                }
+            }
         }
 
         private void btnRefresh_Click(object sender, EventArgs e)
@@ -271,23 +286,39 @@ namespace AstralPartyModManager
                 {
                     AppendDebugLog($"开始启用 Mod: {modInfo.Name}");
 
-                    var backupResult = _backupManager.PrepareEnableMod(modInfo.Name, modInfo.TargetFiles, modInfo.Type, modInfo.FolderPath);
+                    // 对于Comprehensive类型，需要让ModManager收集完整的安装文件列表
+                    // 然后再进行备份，这样才能正确备份所有会被覆盖的文件
+                    var installResult = _modManager.EnableMod(modInfo);
 
-                    if (!backupResult.Success)
+                    if (installResult.Success)
                     {
-                        Logger.Warning($"备份警告：{backupResult.Message}");
-                        if (_configManager.DebugMode)
+                        // Comprehensive类型已经在安装过程中收集了所有目标文件
+                        var allTargetFiles = new List<string>();
+                        foreach (var file in installResult.InstalledFiles)
                         {
-                            AppendDebugLog($"备份警告：{backupResult.Message}");
+                            allTargetFiles.Add(file);
+                        }
+                        foreach (var file in installResult.ReplacedFiles)
+                        {
+                            allTargetFiles.Add(file);
+                        }
+
+                        var backupResult = _backupManager.PrepareEnableModFromFiles(modInfo.Name, allTargetFiles);
+
+                        if (!backupResult.Success)
+                        {
+                            Logger.Warning($"备份警告：{backupResult.Message}");
+                            if (_configManager.DebugMode)
+                            {
+                                AppendDebugLog($"备份警告：{backupResult.Message}");
+                            }
+                        }
+                        else if (_configManager.DebugMode)
+                        {
+                            AppendDebugLog($"备份完成");
+                            AppendDebugLog($"备份文件数：{backupResult.BackedUpCount}");
                         }
                     }
-                    else if (_configManager.DebugMode)
-                    {
-                        AppendDebugLog($"备份完成");
-                        AppendDebugLog($"备份文件数：{backupResult.BackedUpCount}");
-                    }
-
-                    var installResult = _modManager.EnableMod(modInfo);
 
                     if (installResult.Success)
                     {
@@ -310,37 +341,83 @@ namespace AstralPartyModManager
                     }
                     else
                     {
-                        UpdateStatusLabel($"❌ 启用失败：{installResult.Message}");
-                        Logger.Error($"启用 Mod 失败：{modInfo.Name} - {installResult.Message}");
-
-                        if (_configManager.DebugMode)
+                        // 如果Message为空，但有错误，使用第一个错误作为消息
+                        string statusMessage;
+                        if (!string.IsNullOrEmpty(installResult.Message))
                         {
-                            AppendDebugLog($"安装失败：{installResult.Message}");
-                            foreach (var error in installResult.Errors)
+                            statusMessage = installResult.Message;
+                        }
+                        else if (installResult.Errors.Any())
+                        {
+                            statusMessage = installResult.Errors.First();
+                        }
+                        else
+                        {
+                            statusMessage = "未知错误（错误列表为空，请到日志查看详情）";
+                        }
+                        
+                        UpdateStatusLabel($"❌ 启用失败：{statusMessage}");
+                        Logger.Error($"启用 Mod 失败：{modInfo.Name} - {statusMessage}");
+
+                        // 始终输出错误到debug日志，无论是否启用debug模式？不，debug面板只在debug模式显示
+                        AppendDebugLog($"安装失败：{statusMessage}");
+                        foreach (var error in installResult.Errors)
+                        {
+                            AppendDebugLog($"  错误：{error}");
+                        }
+
+                        // 无论是否弃用，都显示错误对话框给用户，包含所有错误详情
+                        string errorTitle = modInfo.IsDeprecated ? "启用弃用 Mod 失败" : "启用 Mod 失败";
+                        string displayMessage;
+                        if (!string.IsNullOrEmpty(installResult.Message))
+                        {
+                            displayMessage = installResult.Message;
+                        }
+                        else if (installResult.Errors.Any())
+                        {
+                            displayMessage = installResult.Errors.First();
+                        }
+                        else
+                        {
+                            displayMessage = "未知错误，请检查Debug日志和应用程序日志";
+                        }
+                        string errorMessage = $"启用失败：{displayMessage}\n\n";
+                        
+                        if (installResult.Errors.Any())
+                        {
+                            errorMessage += "详细错误：\n";
+                            foreach (var error in installResult.Errors.Take(10))
                             {
-                                AppendDebugLog($"  错误：{error}");
+                                errorMessage += $"  - {error}\n";
                             }
+                            if (installResult.Errors.Count > 10)
+                            {
+                                errorMessage += $"  ... 还有 {installResult.Errors.Count - 10} 个错误\n";
+                            }
+                            errorMessage += "\n";
                         }
-
-                        if (modInfo.IsDeprecated)
-                        {
-                            MessageBox.Show($"启用弃用 Mod 失败：{installResult.Message}", "错误",
-                                MessageBoxButtons.OK, MessageBoxIcon.Error);
-                        }
+                        errorMessage += "请检查 Debug 日志查看完整信息。";
+                        
+                        MessageBox.Show(errorMessage,
+                            errorTitle, MessageBoxButtons.OK, MessageBoxIcon.Error);
                     }
 
-                    LoadModList();
+                    // 只更新当前行的启用状态，不重新加载整个列表，保留 Debug 日志
+                    UpdateCurrentRowState();
                 }
                 catch (Exception ex)
                 {
                     Logger.Error($"启用 Mod 失败：{modInfo.Name}", ex);
                     UpdateStatusLabel($"❌ 启用失败：{ex.Message}");
 
-                    if (modInfo.IsDeprecated)
-                    {
-                        MessageBox.Show($"启用 Mod 失败：{ex.Message}", "错误",
-                            MessageBoxButtons.OK, MessageBoxIcon.Error);
-                    }
+                    // 无论是否弃用，都显示错误对话框给用户，包含完整堆栈信息
+                    string errorTitle = modInfo.IsDeprecated ? "启用弃用 Mod 失败" : "启用 Mod 失败";
+                    string errorMessage = $"启用失败：{ex.Message}\n\n" +
+                                         $"异常类型：{ex.GetType().Name}\n" +
+                                         $"堆栈跟踪：\n{ex.StackTrace}\n\n" +
+                                         $"详细信息已记录到日志。";
+                    MessageBox.Show(errorMessage, 
+                        errorTitle, MessageBoxButtons.OK, MessageBoxIcon.Error);
                 }
             }
         }
@@ -393,18 +470,22 @@ namespace AstralPartyModManager
                         }
                     }
 
-                    LoadModList();
+                    // 只更新当前行的启用状态，不重新加载整个列表，保留 Debug 日志
+                    UpdateCurrentRowState();
                 }
                 catch (Exception ex)
                 {
                     Logger.Error($"禁用 Mod 失败：{modInfo.Name}", ex);
                     UpdateStatusLabel($"❌ 禁用失败：{ex.Message}");
 
-                    if (modInfo.IsDeprecated)
-                    {
-                        MessageBox.Show($"禁用 Mod 失败：{ex.Message}", "错误",
-                            MessageBoxButtons.OK, MessageBoxIcon.Error);
-                    }
+                    // 无论是否弃用，都显示错误对话框给用户，包含完整堆栈信息
+                    string errorTitle = modInfo.IsDeprecated ? "禁用弃用 Mod 失败" : "禁用 Mod 失败";
+                    string errorMessage = $"禁用失败：{ex.Message}\n\n" +
+                                         $"异常类型：{ex.GetType().Name}\n" +
+                                         $"堆栈跟踪：\n{ex.StackTrace}\n\n" +
+                                         $"详细信息已记录到日志。";
+                    MessageBox.Show(errorMessage,
+                        errorTitle, MessageBoxButtons.OK, MessageBoxIcon.Error);
                 }
             }
         }
@@ -767,6 +848,38 @@ namespace AstralPartyModManager
             return column;
         }
 
+        /// <summary>
+        /// 更新当前选中行的启用状态，不重新加载整个列表
+        /// </summary>
+        private void UpdateCurrentRowState()
+        {
+            if (dgvMods.CurrentRow == null) return;
+
+            var modInfo = dgvMods.CurrentRow.Tag as ModInfo;
+            if (modInfo == null) return;
+
+            bool isEnabled = _modStateManager.IsEnabled(modInfo.Name);
+            string enabledStr = isEnabled ? "✅ 已启用" : "❌ 未启用";
+
+            // 启用状态在第 6 列（索引从 0 开始）
+            dgvMods.CurrentRow.Cells[6].Value = enabledStr;
+
+            // 更新背景色
+            if (modInfo.IsDeprecated)
+            {
+                dgvMods.CurrentRow.DefaultCellStyle.BackColor = Color.LightCoral;
+            }
+            else if (isEnabled)
+            {
+                dgvMods.CurrentRow.DefaultCellStyle.BackColor = Color.LightGreen;
+            }
+            else
+            {
+                dgvMods.CurrentRow.DefaultCellStyle.BackColor = dgvMods.DefaultCellStyle.BackColor;
+            }
+        }
+
         #endregion
     }
 }
+

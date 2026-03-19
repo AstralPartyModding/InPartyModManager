@@ -14,23 +14,21 @@
     <Description>星引擎 (Astral Party) 开源 Mod 管理工具</Description>
     <Copyright>Copyright © 2026</Copyright>
     <ApplicationManifest>app.manifest</ApplicationManifest>
-    
-    <!-- 发布配置 -->
+
     <PublishReadyToRun>true</PublishReadyToRun>
     <PublishTrimmed>false</PublishTrimmed>
     <SelfContained>true</SelfContained>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <PlatformTarget>x64</PlatformTarget>
-    
-    <!-- .NET 8 单文件发布 -->
     <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
   </PropertyGroup>
 
   <ItemGroup>
     <PackageReference Include="System.Text.Json" Version="8.0.5" />
+    <PackageReference Include="Microsoft.CodeAnalysis.NetAnalyzers" Version="9.0.0" PrivateAssets="all" />
+    <PackageReference Include="StyleCop.Analyzers" Version="1.2.0-beta.556" PrivateAssets="all" />
   </ItemGroup>
 
-  <!-- 发布时复制配置文件 -->
   <ItemGroup>
     <None Include="..\config.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>

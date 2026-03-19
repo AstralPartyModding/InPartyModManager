@@ -26,12 +26,7 @@ namespace AstralPartyModManager
         public static void Error(string message, Exception ex)
             => Log("ERROR", $"{message}: {ex?.Message}{Environment.NewLine}{ex?.StackTrace}");
 
-        public static void Debug(string message)
-        {
-#if DEBUG
-            Log("DEBUG", message);
-#endif
-        }
+        public static void Debug(string message) => Log("DEBUG", message);
 
         private static void Log(string level, string message)
         {

@@ -110,10 +110,9 @@ namespace AstralPartyModManager
                 return false;
             }
 
-            if (!File.Exists(Path.Combine(GamePath, "AstralParty_CN.exe")) &&
-                !File.Exists(Path.Combine(GamePath, "GameAssembly.dll")))
+            if (!File.Exists(Path.Combine(GamePath, "AstralParty_CN.exe")))
             {
-                errorMessage = "游戏目录似乎不包含有效的游戏文件";
+                errorMessage = "游戏目录不正确：在所选路径中找不到 AstralParty_CN.exe\n\n请选择包含 AstralParty_CN.exe 的游戏根目录";
                 return false;
             }
 

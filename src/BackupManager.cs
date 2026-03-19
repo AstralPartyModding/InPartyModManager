@@ -16,7 +16,7 @@ namespace AstralPartyModManager
     );
 
     public record BackupFile(
-        string RelativePath,
+        string FullPath,
         bool IsNewFile,
         string OriginalHash
     );
@@ -88,6 +88,7 @@ namespace AstralPartyModManager
 
         /// <summary>
         /// 获取文件在游戏目录中的实际路径
+        /// 已废弃：此方法不再使用，备份时直接存储完整路径
         /// </summary>
         public string GetGameFilePath(string modFile, string targetDir, ModType modType)
         {
@@ -109,6 +110,106 @@ namespace AstralPartyModManager
 
             string fileNameOnly = Path.GetFileName(modFile);
             return Path.Combine(targetDir, fileNameOnly);
+        }
+
+        /// <summary>
+        /// 根据已经安装完的Mod文件列表进行备份（用于Comprehensive类型）
+        /// </summary>
+        public BackupResult PrepareEnableModFromFiles(string modName, List<string> targetRelativePaths)
+        {
+            var result = new BackupResult(false, string.Empty, 0, 0, new List<string>());
+            Logger.Info($"准备启用 Mod '{modName}'，开始备份游戏文件...");
+
+            var backupInfo = new BackupInfo(modName, DateTime.Now, ModType.Comprehensive, new List<BackupFile>());
+
+            string timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
+            string backupDir = Path.Combine(_backupRoot, timestamp, "game_files");
+
+            Logger.Debug($"Mod '{modName}' 将安装 {targetRelativePaths.Count} 个文件");
+
+            foreach (var relativePath in targetRelativePaths)
+            {
+                // 相对路径相对于游戏根目录（对于外部目录是特殊转换后的路径）
+                string gameFilePath;
+                if (relativePath.Contains(':'))
+                {
+                    // 对于带冒号的路径，说明是完整路径？不，我们已经转换了冒号
+                    // drive:\path 转换为 drive\path
+                    // 所以我们需要把它转换回来：C\Users\name -> C:\Users\name
+                    string driveLetter = relativePath.Split('\\')[0];
+                    string restPath = string.Join("\\", relativePath.Split('\\').Skip(1));
+                    gameFilePath = $"{driveLetter}:\\{restPath}";
+                }
+                else
+                {
+                    gameFilePath = Path.Combine(_gamePath, relativePath);
+                }
+
+                string gameFileDirectory = Path.GetDirectoryName(gameFilePath);
+
+                if (!Directory.Exists(gameFileDirectory))
+                {
+                    try
+                    {
+                        Directory.CreateDirectory(gameFileDirectory);
+                    }
+                    catch (Exception ex)
+                    {
+                        result.Errors.Add($"创建目标目录失败 {gameFileDirectory}: {ex.Message}");
+                        Logger.Warning($"创建目标目录失败：{gameFileDirectory}", ex);
+                        continue;
+                    }
+                }
+
+                bool fileExists = File.Exists(gameFilePath);
+
+                backupInfo.Files.Add(new BackupFile(
+                    gameFilePath,
+                    !fileExists,
+                    fileExists ? ComputeFileHash(gameFilePath) : null
+                ));
+
+                if (!fileExists)
+                {
+                    result = result with { NewFileCount = result.NewFileCount + 1 };
+                    Logger.Debug($"新文件：{relativePath}");
+                }
+                else
+                {
+                    try
+                    {
+                        string backupPath = Path.Combine(backupDir, relativePath);
+                        string backupFileDir = Path.GetDirectoryName(backupPath);
+
+                        if (!Directory.Exists(backupFileDir))
+                        {
+                            Directory.CreateDirectory(backupFileDir);
+                        }
+
+                        File.Copy(gameFilePath, backupPath, overwrite: true);
+                        result = result with { BackedUpCount = result.BackedUpCount + 1 };
+                        Logger.Debug($"已备份：{relativePath}");
+                    }
+                    catch (Exception ex)
+                    {
+                        result.Errors.Add($"备份文件失败 {relativePath}: {ex.Message}");
+                        Logger.Warning($"备份文件失败：{gameFilePath}", ex);
+                    }
+                }
+            }
+
+            SaveBackupInfo(backupInfo, timestamp);
+
+            result = result with
+            {
+                Success = result.Errors.Count == 0,
+                Message = result.Errors.Count == 0
+                    ? $"备份完成：{result.BackedUpCount} 个文件已备份，{result.NewFileCount} 个新文件"
+                    : $"备份完成，但有 {result.Errors.Count} 个错误"
+            };
+
+            Logger.Info($"Mod '{modName}' 备份完成：{result.Message}");
+            return result;
         }
 
         /// <summary>
@@ -153,7 +254,7 @@ namespace AstralPartyModManager
                 bool fileExists = File.Exists(gameFilePath);
 
                 backupInfo.Files.Add(new BackupFile(
-                    relativePath,
+                    gameFilePath,
                     !fileExists,
                     fileExists ? ComputeFileHash(gameFilePath) : null
                 ));
@@ -236,26 +337,21 @@ namespace AstralPartyModManager
 
             string sourceDir = subDir ?? modFolderPath;
 
-            if (modType == ModType.Plugin)
-            {
-                sourceDir = modFolderPath;
-            }
-
             foreach (var file in Directory.GetFiles(sourceDir, "*.*", SearchOption.AllDirectories))
             {
                 if (Path.GetFileName(file).ToLower() == "mod.json") continue;
                 if (file.Contains("\\docs\\")) continue;
 
-                string fileName = Path.GetFileName(file);
+                string relativePath = GetRelativePath(file, sourceDir);
                 string gameFilePath;
 
                 if (modType == ModType.Plugin)
                 {
-                    gameFilePath = Path.Combine(_gamePath, fileName);
+                    gameFilePath = Path.Combine(_gamePath, relativePath);
                 }
                 else
                 {
-                    gameFilePath = Path.Combine(targetDir, fileName);
+                    gameFilePath = Path.Combine(targetDir, relativePath);
                 }
 
                 result[file] = gameFilePath;
@@ -392,15 +488,63 @@ namespace AstralPartyModManager
                 if (File.Exists(jsonPath))
                 {
                     string json = File.ReadAllText(jsonPath);
-                    return JsonSerializer.Deserialize<BackupInfo>(json);
+                    try
+                    {
+                        // 尝试加载新格式（FullPath）
+                        return JsonSerializer.Deserialize<BackupInfo>(json);
+                    }
+                    catch (JsonException)
+                    {
+                        // 如果失败，尝试兼容加载旧格式（RelativePath）
+                        try
+                        {
+                            var oldBackup = JsonSerializer.Deserialize<OldBackupInfo>(json);
+                            if (oldBackup != null)
+                            {
+                                // 转换为新格式
+                                var files = oldBackup.Files
+                                    .Select(oldFile => new BackupFile(
+                                        Path.Combine(_gamePath, oldFile.RelativePath),
+                                        oldFile.IsNewFile,
+                                        oldFile.OriginalHash
+                                    ))
+                                    .ToList();
+                                return new BackupInfo(
+                                    oldBackup.ModName,
+                                    oldBackup.BackupTime,
+                                    oldBackup.ModType,
+                                    files
+                                );
+                            }
+                        }
+                        catch (Exception ex2)
+                        {
+                            Logger.Warning($"加载旧格式备份失败：{jsonPath}", ex2);
+                        }
+                        Logger.Warning($"加载备份信息失败，格式不兼容：{jsonPath}");
+                    }
                 }
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"加载备份信息失败：{ex.Message}");
+                Logger.Warning($"加载备份信息失败：{ex.Message}", ex);
             }
             return null;
         }
+
+        // 兼容旧版本备份格式
+        private record OldBackupInfo(
+            string ModName,
+            DateTime BackupTime,
+            ModType ModType,
+            List<OldBackupFile> Files
+        );
+
+        private record OldBackupFile(
+            string RelativePath,
+            bool IsNewFile,
+            string OriginalHash
+        );
 
         /// <summary>
         /// 禁用 Mod：恢复被覆盖的文件，删除新增的文件
@@ -414,7 +558,7 @@ namespace AstralPartyModManager
 
             if (backupInfo == null || backupInfo.Files.Count == 0)
             {
-                var (success, message) = DisableModByType(modType, result);
+                var (success, message) = DisableModByType(modName, modType, result);
                 result = result with { Success = success, Message = message };
                 return result;
             }
@@ -426,26 +570,27 @@ namespace AstralPartyModManager
 
             foreach (var file in backupInfo.Files)
             {
+                string gameFilePath = file.FullPath;
+                string relativePath = GetRelativePath(gameFilePath, _gamePath);
                 try
                 {
-                    string gameFilePath = Path.Combine(_gamePath, file.RelativePath);
-
                     if (file.IsNewFile)
                     {
                         if (File.Exists(gameFilePath))
                         {
                             File.Delete(gameFilePath);
                             result = result with { DeletedCount = result.DeletedCount + 1 };
-                            Logger.Debug($"已删除新文件：{file.RelativePath}");
+                            Logger.Debug($"已删除新文件：{relativePath}");
                         }
                         else
                         {
-                            Logger.Debug($"文件不存在，跳过删除：{file.RelativePath}");
+                            Logger.Debug($"文件不存在，跳过删除：{relativePath}");
                         }
                     }
                     else
                     {
-                        string backupPath = Path.Combine(backupDir, file.RelativePath);
+                        // 备份文件路径依然使用相对路径（相对于游戏根目录保存在备份文件夹中）
+                        string backupPath = Path.Combine(backupDir, relativePath);
                         if (File.Exists(backupPath))
                         {
                             string destDir = Path.GetDirectoryName(gameFilePath);
@@ -455,24 +600,25 @@ namespace AstralPartyModManager
                             }
                             File.Copy(backupPath, gameFilePath, overwrite: true);
                             result = result with { RestoredCount = result.RestoredCount + 1 };
-                            Logger.Debug($"已恢复文件：{file.RelativePath}");
+                            Logger.Debug($"已恢复文件：{relativePath}");
                         }
                         else if (File.Exists(gameFilePath))
                         {
                             File.Delete(gameFilePath);
                             result = result with { DeletedCount = result.DeletedCount + 1 };
-                            Logger.Debug($"备份不存在，已删除文件：{file.RelativePath}");
+                            Logger.Debug($"备份不存在，已删除文件：{relativePath}");
                         }
                         else
                         {
-                            Logger.Debug($"文件和备份都不存在，跳过：{file.RelativePath}");
+                            // relativePath 已经在上面声明过了
+                            Logger.Debug($"文件和备份都不存在，跳过：{relativePath}");
                         }
                     }
                 }
                 catch (Exception ex)
                 {
-                    result.Errors.Add($"恢复文件失败 {file.RelativePath}: {ex.Message}");
-                    Logger.Warning($"恢复文件失败：{file.RelativePath}", ex);
+                    result.Errors.Add($"恢复文件失败 {relativePath}: {ex.Message}");
+                    Logger.Warning($"恢复文件失败：{relativePath}", ex);
                 }
             }
 
@@ -485,13 +631,20 @@ namespace AstralPartyModManager
             };
 
             Logger.Info($"Mod '{modName}' 禁用完成：{result.Message}");
+
+            // 恢复完成后删除备份，节省空间
+            if (backupInfo != null)
+            {
+                DeleteBackup(backupInfo);
+            }
+
             return result;
         }
 
         /// <summary>
         /// 根据 Mod 类型禁用（没有备份信息时使用）
         /// </summary>
-        private (bool Success, string Message) DisableModByType(ModType modType, RestoreResult result)
+        private (bool Success, string Message) DisableModByType(string modName, ModType modType, RestoreResult result)
         {
             if (modType == ModType.Plugin)
             {
@@ -524,6 +677,97 @@ namespace AstralPartyModManager
                 return (success, message);
             }
 
+            if (modType == ModType.Addressables || modType == ModType.Comprehensive)
+            {
+                // 对于Comprehensive类型，不应该批量删除所有bundle文件
+                // Comprehensive有完整的备份信息，应该走正常恢复流程
+                // 如果真的走到这里，说明备份丢失，只记录不操作
+                if (modType == ModType.Comprehensive)
+                {
+                    Logger.Warning($"Comprehensive类型Mod {modName} 没有找到备份信息，跳过批量删除");
+                    result.Errors.Add($"Comprehensive类型Mod没有找到备份信息，无法自动恢复，请使用验证游戏文件完整性修复");
+                    return (false, $"Comprehensive类型Mod没有找到备份信息，请在Steam中验证游戏文件完整性恢复");
+                }
+
+                // Addressables 类型仍然保留旧逻辑（不推荐使用这种类型）
+                string targetDir = Path.Combine(_dataPath, "StreamingAssets", "aa", "StandaloneWindows64");
+                int deletedCount = 0;
+
+                if (Directory.Exists(targetDir))
+                {
+                    try
+                    {
+                        var bundleFiles = Directory.GetFiles(targetDir, "*.bundle");
+                        foreach (var bundleFile in bundleFiles)
+                        {
+                            try
+                            {
+                                File.Delete(bundleFile);
+                                deletedCount++;
+                                Logger.Debug($"已删除bundle文件（无备份）: {Path.GetFileName(bundleFile)}");
+                            }
+                            catch (Exception ex)
+                            {
+                                result.Errors.Add($"删除文件失败 {Path.GetFileName(bundleFile)}: {ex.Message}");
+                                Logger.Warning($"删除bundle文件失败：{bundleFile}", ex);
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        result.Errors.Add($"遍历目录失败 {targetDir}: {ex.Message}");
+                        Logger.Warning($"遍历目录失败：{targetDir}", ex);
+                    }
+                }
+
+                bool success = result.Errors.Count == 0;
+                string message = success
+                    ? $"已尝试禁用 {modType} 类型 Mod（无备份信息），{deletedCount} 个bundle文件已删除\n游戏启动时会自动重新下载原版文件"
+                    : $"禁用完成，但有 {result.Errors.Count} 个错误：\n{string.Join("; ", result.Errors)}";
+                return (success, message);
+            }
+
+            if (modType == ModType.Voice)
+            {
+                // 语音文件都在 AssetBundles 目录下
+                string appData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+                string targetDir = Path.Combine(appData, "Low", "feimo", "AstralParty_CN", "com.unity.addressables", "AssetBundles");
+                int deletedCount = 0;
+
+                if (Directory.Exists(targetDir))
+                {
+                    try
+                    {
+                        var bundleFiles = Directory.GetFiles(targetDir, "*.bundle");
+                        foreach (var bundleFile in bundleFiles)
+                        {
+                            try
+                            {
+                                File.Delete(bundleFile);
+                                deletedCount++;
+                                Logger.Debug($"已删除语音bundle文件（无备份）: {Path.GetFileName(bundleFile)}");
+                            }
+                            catch (Exception ex)
+                            {
+                                result.Errors.Add($"删除文件失败 {Path.GetFileName(bundleFile)}: {ex.Message}");
+                                Logger.Warning($"删除语音bundle文件失败：{bundleFile}", ex);
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        result.Errors.Add($"遍历目录失败 {targetDir}: {ex.Message}");
+                        Logger.Warning($"遍历目录失败：{targetDir}", ex);
+                    }
+                }
+
+                bool success = result.Errors.Count == 0;
+                string message = success
+                    ? $"已尝试禁用语音Mod（无备份信息），{deletedCount} 个文件已删除\n游戏启动时会自动重新下载原版文件"
+                    : $"禁用完成，但有 {result.Errors.Count} 个错误：\n{string.Join("; ", result.Errors)}";
+                return (success, message);
+            }
+
             Logger.Warning($"无法确定 {modType} 类型 Mod 的具体文件，请使用'恢复纯净'功能或手动清理");
             result.Errors.Add($"无法确定 {modType} 类型 Mod 的具体文件");
             return (false, $"无法确定 {modType} 类型 Mod 的具体文件");
@@ -534,13 +778,33 @@ namespace AstralPartyModManager
         /// </summary>
         private BackupInfo FindLatestBackupInfo(string modName)
         {
-            var backupDirs = Directory.GetDirectories(_backupRoot)
-                .OrderByDescending(d => d)
-                .ToList();
+            var backupDirs = new List<(string Path, DateTime Time)>();
 
-            foreach (var dir in backupDirs)
+            foreach (var dir in Directory.GetDirectories(_backupRoot))
             {
                 string timestamp = Path.GetFileName(dir);
+                if (DateTime.TryParseExact(timestamp, "yyyyMMdd_HHmmss",
+                    System.Globalization.CultureInfo.InvariantCulture,
+                    System.Globalization.DateTimeStyles.None, out DateTime time))
+                {
+                    backupDirs.Add((dir, time));
+                }
+                else
+                {
+                    // 如果不能解析时间，使用目录的最后修改时间
+                    try
+                    {
+                        time = Directory.GetLastWriteTime(dir);
+                        backupDirs.Add((dir, time));
+                    }
+                    catch { }
+                }
+            }
+
+            // 按时间降序排序，最新的在最前面
+            foreach (var dirInfo in backupDirs.OrderByDescending(d => d.Time))
+            {
+                string timestamp = Path.GetFileName(dirInfo.Path);
                 var info = LoadBackupInfo(timestamp);
                 if (info != null && info.ModName == modName)
                 {
@@ -645,6 +909,27 @@ namespace AstralPartyModManager
                 {
                     Logger.Warning($"删除备份失败：{dir}", ex);
                 }
+            }
+        }
+
+        /// <summary>
+        /// 删除指定备份
+        /// </summary>
+        private void DeleteBackup(BackupInfo backupInfo)
+        {
+            try
+            {
+                string timestamp = GetTimestampFromBackupInfo(backupInfo);
+                string backupDir = Path.Combine(_backupRoot, timestamp);
+                if (Directory.Exists(backupDir))
+                {
+                    Directory.Delete(backupDir, recursive: true);
+                    Logger.Info($"已删除Mod '{backupInfo.ModName}' 的备份：{backupDir}");
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.Warning($"删除备份失败：{backupInfo.ModName}", ex);
             }
         }
 
