@@ -26,8 +26,11 @@ jobs:
 
     - run: dotnet format ${{ env.SLN }} --verify-no-changes
 
+    - name: Publish
+      run: dotnet publish ${{ env.SLN }} -c ${{ env.CONFIG }} -r win-x64 --self-contained true -o ./publish --no-build
+
     - uses: actions/upload-artifact@v4
       with:
         name: AstralPartyModManager-${{ github.sha }}
-        path: src/bin/${{ env.CONFIG }}/net8.0-windows/**/*
+        path: ./publish/**/*
         if-no-files-found: error

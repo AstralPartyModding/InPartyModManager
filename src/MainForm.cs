@@ -6,6 +6,7 @@ namespace AstralPartyModManager
 {
     using System;
     using System.Collections.Generic;
+    using System.Diagnostics;
     using System.Drawing;
     using System.IO;
     using System.Linq;
@@ -130,6 +131,7 @@ namespace AstralPartyModManager
             StyleButton(this.btnEnable, SuccessColor);
             StyleButton(this.btnDisable, WarningColor);
             StyleButton(this.btnRestore, DangerColor);
+            StyleButton(this.btnLaunchGame, Color.FromArgb(102, 126, 234));
 
             this.lblStatus.Font = new Font("Microsoft YaHei UI", 9F);
             this.lblStatus.ForeColor = Color.FromArgb(80, 80, 80);
@@ -260,7 +262,7 @@ namespace AstralPartyModManager
                     this.AppendDebugLog(
                         $"[{mod.Name}] 类型={mod.Type}, 文件数={mod.TargetFiles.Count}, 弃用={mod.IsDeprecated}"
                     );
-                    if (mod.ScanError != null)
+                    if (!string.IsNullOrEmpty(mod.ScanError))
                     {
                         this.AppendDebugLog($"  扫描错误：{mod.ScanError}");
                     }
@@ -322,43 +324,47 @@ namespace AstralPartyModManager
                 {
                     this.AppendDebugLog($"开始启用 Mod: {modInfo.Name}");
 
-                    // 对于Comprehensive类型，需要让ModManager收集完整的安装文件列表
-                    // 然后再进行备份，这样才能正确备份所有会被覆盖的文件
-                    var installResult = this.modManager.EnableMod(modInfo);
+                    // 修复：先预测文件，再备份原始文件，最后安装Mod
+                    // 1. 预测Mod会影响哪些文件
+                    var targetFiles = this.modManager.GetModTargetFiles(modInfo);
 
-                    if (installResult.Success)
+                    if (targetFiles.Count == 0)
                     {
-                        // Comprehensive类型已经在安装过程中收集了所有目标文件
-                        var allTargetFiles = new List<string>();
-                        foreach (var file in installResult.InstalledFiles)
-                        {
-                            allTargetFiles.Add(file);
-                        }
-
-                        foreach (var file in installResult.ReplacedFiles)
-                        {
-                            allTargetFiles.Add(file);
-                        }
-
-                        var backupResult = this.backupManager.PrepareEnableModFromFiles(
-                            modInfo.Name,
-                            allTargetFiles
+                        this.UpdateStatusLabel($"❌ 启用失败：无法检测到Mod文件");
+                        Logger.Error($"启用 Mod 失败：{modInfo.Name} - 无法检测到Mod文件");
+                        MessageBox.Show(
+                            $"启用失败：无法检测到Mod文件\n请检查Mod文件夹结构是否正确。",
+                            "启用 Mod 失败",
+                            MessageBoxButtons.OK,
+                            MessageBoxIcon.Error
                         );
+                        return;
+                    }
 
-                        if (!backupResult.Success)
+                    this.AppendDebugLog($"预测到 {targetFiles.Count} 个目标文件");
+
+                    // 2. 备份原始文件（此时文件还是原始状态）
+                    var backupResult = this.backupManager.PrepareEnableModFromFiles(
+                        modInfo.Name,
+                        targetFiles
+                    );
+
+                    if (!backupResult.Success)
+                    {
+                        Logger.Warning($"备份警告：{backupResult.Message}");
+                        if (this.configManager.DebugMode)
                         {
-                            Logger.Warning($"备份警告：{backupResult.Message}");
-                            if (this.configManager.DebugMode)
-                            {
-                                this.AppendDebugLog($"备份警告：{backupResult.Message}");
-                            }
-                        }
-                        else if (this.configManager.DebugMode)
-                        {
-                            this.AppendDebugLog($"备份完成");
-                            this.AppendDebugLog($"备份文件数：{backupResult.BackedUpCount}");
+                            this.AppendDebugLog($"备份警告：{backupResult.Message}");
                         }
                     }
+                    else if (this.configManager.DebugMode)
+                    {
+                        this.AppendDebugLog($"备份完成");
+                        this.AppendDebugLog($"备份文件数：{backupResult.BackedUpCount}");
+                    }
+
+                    // 3. 安装Mod（此时才覆盖文件）
+                    var installResult = this.modManager.EnableMod(modInfo);
 
                     if (installResult.Success)
                     {
@@ -629,13 +635,37 @@ namespace AstralPartyModManager
             this.ToggleDebugMode();
         }
 
+        private void BtnLaunchGame_Click(object sender, EventArgs e)
+        {
+            try
+            {
+                Process.Start(
+                    new ProcessStartInfo("steam://rungameid/2622000") { UseShellExecute = true }
+                );
+                this.UpdateStatusLabel("🎮 正在启动游戏...");
+                Logger.Info("正在启动游戏 (steam://rungameid/2622000)");
+            }
+            catch (Exception ex)
+            {
+                Logger.Error("启动游戏失败", ex);
+                MessageBox.Show(
+                    $"启动游戏失败：{ex.Message}\n\n请确保已安装 Steam 客户端。",
+                    "启动游戏失败",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Error
+                );
+            }
+        }
+
         private System.ComponentModel.IContainer components = null;
         private System.Windows.Forms.DataGridView dgvMods;
         private System.Windows.Forms.Button btnRefresh;
         private System.Windows.Forms.Button btnEnable;
         private System.Windows.Forms.Button btnDisable;
         private System.Windows.Forms.Button btnRestore;
+        private System.Windows.Forms.Button btnLaunchGame;
         private System.Windows.Forms.Label lblStatus;
+        private System.Windows.Forms.Label lblWarning;
         private System.Windows.Forms.GroupBox grpMods;
         private System.Windows.Forms.GroupBox grpActions;
 
@@ -662,8 +692,10 @@ namespace AstralPartyModManager
             this.btnEnable = new System.Windows.Forms.Button();
             this.btnDisable = new System.Windows.Forms.Button();
             this.btnRestore = new System.Windows.Forms.Button();
+            this.btnLaunchGame = new System.Windows.Forms.Button();
             this.lblActionHint = new System.Windows.Forms.Label();
             this.lblStatus = new System.Windows.Forms.Label();
+            this.lblWarning = new System.Windows.Forms.Label();
             this.pnlDebug = new System.Windows.Forms.Panel();
             this.txtDebugLog = new System.Windows.Forms.TextBox();
             this.lblDebugTitle = new System.Windows.Forms.Label();
@@ -765,6 +797,7 @@ namespace AstralPartyModManager
             this.grpActions.Controls.Add(this.btnDisable);
             this.grpActions.Controls.Add(this.btnEnable);
             this.grpActions.Controls.Add(this.btnRefresh);
+            this.grpActions.Controls.Add(this.btnLaunchGame);
             this.grpActions.Controls.Add(this.lblActionHint);
             this.grpActions.Location = new System.Drawing.Point(12, 461);
             this.grpActions.Name = "grpActions";
@@ -804,13 +837,22 @@ namespace AstralPartyModManager
             this.btnDisable.Click += new System.EventHandler(this.BtnDisable_Click);
 
             // btnRestore
-            this.btnRestore.Location = new System.Drawing.Point(740, 25);
+            this.btnRestore.Location = new System.Drawing.Point(340, 25);
             this.btnRestore.Name = "btnRestore";
             this.btnRestore.Size = new System.Drawing.Size(110, 35);
             this.btnRestore.TabIndex = 3;
             this.btnRestore.Text = "♻️ 恢复纯净";
             this.btnRestore.UseVisualStyleBackColor = true;
             this.btnRestore.Click += new System.EventHandler(this.BtnRestore_Click);
+
+            // btnLaunchGame
+            this.btnLaunchGame.Location = new System.Drawing.Point(740, 25);
+            this.btnLaunchGame.Name = "btnLaunchGame";
+            this.btnLaunchGame.Size = new System.Drawing.Size(110, 35);
+            this.btnLaunchGame.TabIndex = 4;
+            this.btnLaunchGame.Text = "🎮 启动游戏";
+            this.btnLaunchGame.UseVisualStyleBackColor = true;
+            this.btnLaunchGame.Click += new System.EventHandler(this.BtnLaunchGame_Click);
 
             // lblActionHint
             this.lblActionHint.AutoSize = true;
@@ -821,21 +863,32 @@ namespace AstralPartyModManager
             this.lblActionHint.Size = new System.Drawing.Size(200, 17);
             this.lblActionHint.Text = "💡 选择一个 Mod 后点击启用或禁用";
 
+            // lblWarning
+            this.lblWarning.AutoSize = true;
+            this.lblWarning.Font = new System.Drawing.Font("Microsoft YaHei UI", 8.5F);
+            this.lblWarning.ForeColor = Color.FromArgb(220, 53, 69);
+            this.lblWarning.Location = new System.Drawing.Point(12, 575);
+            this.lblWarning.Name = "lblWarning";
+            this.lblWarning.Size = new System.Drawing.Size(860, 17);
+            this.lblWarning.TabIndex = 3;
+            this.lblWarning.Text =
+                "⚠️ 提示：Mod 禁用可能失效，建议恢复纯净后使用 Steam 验证游戏完整性检查";
+
             // lblStatus
             this.lblStatus.AutoSize = true;
             this.lblStatus.Font = new System.Drawing.Font("Microsoft YaHei UI", 9F);
             this.lblStatus.ForeColor = Color.FromArgb(80, 80, 80);
-            this.lblStatus.Location = new System.Drawing.Point(12, 575);
+            this.lblStatus.Location = new System.Drawing.Point(12, 598);
             this.lblStatus.Name = "lblStatus";
             this.lblStatus.Size = new System.Drawing.Size(80, 17);
-            this.lblStatus.TabIndex = 3;
+            this.lblStatus.TabIndex = 4;
             this.lblStatus.Text = "状态：就绪";
 
             // pnlDebug
-            this.pnlDebug.Location = new System.Drawing.Point(12, 595);
+            this.pnlDebug.Location = new System.Drawing.Point(12, 625);
             this.pnlDebug.Name = "pnlDebug";
             this.pnlDebug.Size = new System.Drawing.Size(856, 150);
-            this.pnlDebug.TabIndex = 4;
+            this.pnlDebug.TabIndex = 5;
             this.pnlDebug.BackColor = Color.FromArgb(30, 30, 30);
             this.pnlDebug.BorderStyle = BorderStyle.FixedSingle;
             this.pnlDebug.Controls.Add(this.txtDebugLog);
@@ -870,9 +923,10 @@ namespace AstralPartyModManager
             this.AutoScaleDimensions = new System.Drawing.SizeF(7F, 17F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
             this.BackColor = BackgroundColor;
-            this.ClientSize = new System.Drawing.Size(884, 750);
+            this.ClientSize = new System.Drawing.Size(884, 780);
             this.Controls.Add(this.pnlDebug);
             this.Controls.Add(this.lblStatus);
+            this.Controls.Add(this.lblWarning);
             this.Controls.Add(this.grpActions);
             this.Controls.Add(this.grpMods);
             this.Controls.Add(this.menuStrip);

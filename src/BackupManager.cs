@@ -85,12 +85,14 @@ namespace AstralPartyModManager
                         "StandaloneWindows64"
                     );
                 case ModType.Voice:
-                    string appData = Environment.GetFolderPath(
+                    string localAppData = Environment.GetFolderPath(
                         Environment.SpecialFolder.LocalApplicationData
                     );
+                    // LocalApplicationData 是 .../AppData/Local，我们需要 .../AppData/LocalLow
+                    string appDataRoot = Path.GetDirectoryName(localAppData);
+                    string appData = Path.Combine(appDataRoot, "LocalLow");
                     return Path.Combine(
                         appData,
-                        "Low",
                         "feimo",
                         "AstralParty_CN",
                         "com.unity.addressables",
@@ -166,14 +168,20 @@ namespace AstralPartyModManager
             {
                 // 相对路径相对于游戏根目录（对于外部目录是特殊转换后的路径）
                 string gameFilePath;
-                if (relativePath.Contains(':'))
+                // 特殊处理外部绝对路径：我们把 C:\path 转换为 C\path，所以第一个部分是驱动器号
+                // 判断是否是这种特殊格式：第一个部分没有扩展名（.）说明就是驱动器号
+                string[] parts = relativePath.Split('\\');
+                if (parts.Length > 0 && parts[0].Length == 1 && !parts[0].Contains('.'))
                 {
-                    // 对于带冒号的路径，说明是完整路径？不，我们已经转换了冒号
-                    // drive:\path 转换为 drive\path
-                    // 所以我们需要把它转换回来：C\Users\name -> C:\Users\name
-                    string driveLetter = relativePath.Split('\\')[0];
-                    string restPath = string.Join("\\", relativePath.Split('\\').Skip(1));
+                    // 对于特殊格式：C\Users\name -> C:\Users\name
+                    string driveLetter = parts[0];
+                    string restPath = string.Join("\\", parts.Skip(1));
                     gameFilePath = $"{driveLetter}:\\{restPath}";
+                }
+                else if (relativePath.Contains(':'))
+                {
+                    // 直接就是完整路径
+                    gameFilePath = relativePath;
                 }
                 else
                 {
@@ -368,7 +376,12 @@ namespace AstralPartyModManager
             }
             else if (modType == ModType.Voice)
             {
+                // 同时支持小写 appdata 和大写 AppData
                 standardDir = FindStandardDirectory(modFolderPath, "appdata");
+                if (standardDir == null)
+                {
+                    standardDir = FindStandardDirectory(modFolderPath, "AppData");
+                }
             }
 
             if (standardDir != null)
@@ -480,25 +493,21 @@ namespace AstralPartyModManager
                 }
                 else if (modType == ModType.Voice)
                 {
-                    string appData = Environment.GetFolderPath(
+                    string localAppData = Environment.GetFolderPath(
                         Environment.SpecialFolder.LocalApplicationData
                     );
+                    // LocalApplicationData 是 .../AppData/Local，我们需要 .../AppData/LocalLow
+                    string appDataRoot = Path.GetDirectoryName(localAppData);
+                    string appData = Path.Combine(appDataRoot, "LocalLow");
                     if (relativePath.StartsWith("Low", StringComparison.OrdinalIgnoreCase))
                     {
                         string subPath = relativePath.Substring("Low".Length).TrimStart('\\', '/');
-                        gameFilePath = Path.Combine(
-                            appData,
-                            "Low",
-                            "feimo",
-                            "AstralParty_CN",
-                            subPath
-                        );
+                        gameFilePath = Path.Combine(appData, "feimo", "AstralParty_CN", subPath);
                     }
                     else
                     {
                         gameFilePath = Path.Combine(
                             appData,
-                            "Low",
                             "feimo",
                             "AstralParty_CN",
                             relativePath
@@ -743,6 +752,15 @@ namespace AstralPartyModManager
 
             Logger.Info($"Mod '{modName}' 禁用完成：{result.Message}");
 
+            // 对于Plugin类型，即使有备份，也要额外调用DisableModByType来确保
+            // 删除所有常见的插件文件（如星引擎加速等特殊插件）
+            if (modType == ModType.Plugin)
+            {
+                var (success, message) = this.DisableModByType(modName, modType, result);
+                // 不需要修改Success状态，因为主要恢复已经完成
+                Logger.Info($"Plugin类型Mod额外清理完成：{message}");
+            }
+
             // 恢复完成后删除备份，节省空间
             if (backupInfo != null)
             {
@@ -769,8 +787,10 @@ namespace AstralPartyModManager
                     "speedhack_config.json",
                     "winmm.dll",
                     "dinput8.dll",
+                    "winhttp.dll",
                     "UnityDoorstop.dll",
                     "doorstop_config.ini",
+                    "config.ini",
                 };
                 int deletedCount = 0;
 
@@ -869,12 +889,14 @@ namespace AstralPartyModManager
             if (modType == ModType.Voice)
             {
                 // 语音文件都在 AssetBundles 目录下
-                string appData = Environment.GetFolderPath(
+                string localAppData = Environment.GetFolderPath(
                     Environment.SpecialFolder.LocalApplicationData
                 );
+                // LocalApplicationData 是 .../AppData/Local，我们需要 .../AppData/LocalLow
+                string appDataRoot = Path.GetDirectoryName(localAppData);
+                string appData = Path.Combine(appDataRoot, "LocalLow");
                 string targetDir = Path.Combine(
                     appData,
-                    "Low",
                     "feimo",
                     "AstralParty_CN",
                     "com.unity.addressables",
