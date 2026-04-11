@@ -35,10 +35,10 @@ if not exist "AstralPartyModManager.csproj" (
 )
 
 echo [1/3] Restoring dependencies...
-dotnet restore
+dotnet restore AstralPartyModManager.csproj
 
 echo [2/3] Building project...
-dotnet build -c Release --no-restore
+dotnet build AstralPartyModManager.csproj -c Release --no-restore
 
 if %errorlevel% neq 0 (
     echo.
@@ -48,7 +48,12 @@ if %errorlevel% neq 0 (
 )
 
 echo [3/3] Publishing to publish folder...
-dotnet publish -c Release -r win-x64 --self-contained true -o ../publish --no-build
+dotnet publish AstralPartyModManager.csproj -c Release -r win-x64 --self-contained true -o ../publish --no-build
+
+echo.
+echo [Cleanup] Cleaning intermediate files...
+if exist "bin" rmdir /s /q "bin"
+if exist "obj" rmdir /s /q "obj"
 
 echo.
 echo ========================================

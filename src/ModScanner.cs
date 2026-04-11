@@ -163,6 +163,14 @@ namespace AstralPartyModManager
             {
                 try
                 {
+                    // 如果路径包含disable，直接跳过，不显示在列表中
+                    if (dir.ToLower().Contains("disable"))
+                    {
+                        Logger.Info($"跳过禁用文件夹: {dir}");
+                        result.FailedCount++;
+                        continue;
+                    }
+
                     var modInfo = this.ParseModFolder(dir);
                     if (modInfo != null)
                     {
@@ -375,6 +383,14 @@ namespace AstralPartyModManager
         private static void InferModType(string folderPath, ModInfo modInfo)
         {
             string folderName = Path.GetFileName(folderPath).ToLower();
+            
+            // 如果路径中任何一级包含disable，说明是禁用版本，不检测为插件
+            if (folderPath.ToLower().Contains("disable"))
+            {
+                // 禁用版本直接标记为Unknown，不进行插件检测
+                modInfo.Type = ModType.Unknown;
+                return;
+            }
 
             if (Directory.Exists(Path.Combine(folderPath, "AstralParty")))
             {
@@ -432,6 +448,16 @@ namespace AstralPartyModManager
                 return;
             }
 
+           // 如果当前目录没有找到，检查子目录中是否有bundle（处理开发输出结构）
+           foreach (var subdir in Directory.GetDirectories(folderPath))
+           {
+               if (Directory.GetFiles(subdir, "*.bundle", SearchOption.AllDirectories).Length > 0)
+               {
+                   modInfo.Type = ModType.Addressables;
+                   return;
+               }
+           }
+
             if (Directory.GetFiles(folderPath, "*.dll", SearchOption.AllDirectories).Length > 0)
             {
                 modInfo.Type = ModType.Plugin;
@@ -470,6 +496,25 @@ namespace AstralPartyModManager
                 {
                     modInfo.Type = ModType.Voice;
                     ScanDirectoryToTargetFiles(subdir, modInfo);
+                }
+            }
+
+            if (modInfo.TargetFiles.Count == 0)
+            {
+                // 如果没有找到已知结构，尝试递归查找是否有包含bundle的子目录
+                // 处理类似 Project/bin/Release/ModResources/ModName 这种开发输出结构
+                foreach (var subdir in subdirs)
+                {
+                    var bundleFiles = Directory.GetFiles(subdir, "*.bundle", SearchOption.AllDirectories);
+                    if (bundleFiles.Length > 0)
+                    {
+                        // 找到包含bundle的子目录，递归扫描
+                        ScanTargetFiles(subdir, modInfo);
+                        if (modInfo.TargetFiles.Count > 0)
+                        {
+                            break;
+                        }
+                    }
                 }
             }
 

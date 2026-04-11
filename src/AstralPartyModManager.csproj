@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
     <PropertyGroup>
         <OutputType>WinExe</OutputType>
-        <TargetFramework>net8.0-windows</TargetFramework>
+        <TargetFramework>net9.0-windows</TargetFramework>
         <UseWindowsForms>true</UseWindowsForms>
         <RootNamespace>AstralPartyModManager</RootNamespace>
         <AssemblyName>APmodManager</AssemblyName>
@@ -23,10 +23,12 @@
     </PropertyGroup>
 
     <ItemGroup>
-        <PackageReference Include="System.Text.Json" Version="8.0.5" />
+        <PackageReference Include="System.Text.Json" Version="9.0.5" />
+        <PackageReference Include="System.Security.Cryptography.Xml" Version="9.0.0" />
+        <PackageReference Include="System.Security.Cryptography.Pkcs" Version="9.0.0" />
         <PackageReference
             Include="Microsoft.CodeAnalysis.NetAnalyzers"
-            Version="9.0.0"
+            Version="6.0.0"
             PrivateAssets="all"
         />
         <PackageReference
@@ -37,6 +39,9 @@
     </ItemGroup>
 
     <ItemGroup>
-        <None Include="..\config.json" CopyToOutputDirectory="PreserveNewest" />
+        <!-- 排除MelonLoader特有的文件 -->
+        <Compile Remove="ModManagerPlugin.cs" />
+        <Compile Remove="InPartyModUI.cs" />
+        <Compile Remove="ModScanner.MelonLoader.cs" />
     </ItemGroup>
 </Project>

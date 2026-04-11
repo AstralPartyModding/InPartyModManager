@@ -1136,7 +1136,8 @@ namespace AstralPartyModManager
         {
             try
             {
-                using (var sha256 = SHA256.Create())
+                // 使用SHA256Managed避免程序集绑定问题，兼容所有.NET版本
+                using (var sha256 = new SHA256Managed())
                 using (var stream = File.OpenRead(filePath))
                 {
                     var hash = sha256.ComputeHash(stream);

@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <AssemblyName>AstralPartyModManager</AssemblyName>
+    <RootNamespace>AstralPartyModManager.MelonLoader</RootNamespace>
+    <Description>星引擎Mod管理器 - MelonLoader版本</Description>
+    <Version>2.0.0</Version>
+    <TargetFramework>net9.0</TargetFramework>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Core\AstralPartyMod.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- 排除原有的WinForms文件 -->
+    <Compile Remove="MainForm.cs" />
+    <Compile Remove="SettingsForm.cs" />
+    <Compile Remove="Program.cs" />
+    <Compile Remove="BackupManager.cs" />
+    <Compile Remove="ModManager.cs" />
+    <Compile Remove="ModStateManager.cs" />
+    <Compile Remove="ModScanner.cs" />
+    <Compile Remove="ConfigManager.cs" />
+    <Compile Remove="Logger.cs" />
+    <Compile Remove="app.manifest" />
+    <!-- InPartyModUI只属于MelonLoader版本，不排除 -->
+  </ItemGroup>
+
+</Project>
