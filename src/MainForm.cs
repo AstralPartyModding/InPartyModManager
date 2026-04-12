@@ -31,6 +31,9 @@ namespace AstralPartyModManager
         private static readonly Color GridHeaderForeColor = Color.FromArgb(33, 37, 41);
         private static readonly Color GridHeaderSelectionColor = Color.FromArgb(13, 110, 253);
 
+        private System.Windows.Forms.Button btnInstallZip;
+        private System.Windows.Forms.Label lblDragHint;
+
         public MainForm()
         {
             this.InitializeComponent();
@@ -38,6 +41,7 @@ namespace AstralPartyModManager
             this.InitializeStateManager();
             this.InitializeManagers();
             this.ApplyModernStyles();
+            this.InitializeDragDrop();
             this.InitializeDebugMode();
             this.LoadModList();
         }
@@ -87,8 +91,11 @@ namespace AstralPartyModManager
         private void ApplyModernStyles()
         {
             this.BackColor = BackgroundColor;
-            this.FormBorderStyle = FormBorderStyle.FixedSingle;
+            this.FormBorderStyle = FormBorderStyle.Sizable;
             this.StartPosition = FormStartPosition.CenterScreen;
+            this.Size = new Size(900, 600);
+            this.MinimumSize = new Size(800, 500);
+            this.MaximumSize = new Size(1200, 800);
 
             this.dgvMods.BackgroundColor = PanelBackColor;
             this.dgvMods.BorderStyle = BorderStyle.None;
@@ -117,7 +124,7 @@ namespace AstralPartyModManager
 
             this.dgvMods.DefaultCellStyle.Font = new Font("Microsoft YaHei UI", 9F);
             this.dgvMods.DefaultCellStyle.Padding = new Padding(5);
-            this.dgvMods.RowTemplate.Height = 30;
+            this.dgvMods.RowTemplate.Height = 35;
 
             this.grpMods.BackColor = Color.Transparent;
             this.grpMods.ForeColor = Color.FromArgb(80, 80, 80);
@@ -132,6 +139,9 @@ namespace AstralPartyModManager
             StyleButton(this.btnDisable, WarningColor);
             StyleButton(this.btnRestore, DangerColor);
             StyleButton(this.btnLaunchGame, Color.FromArgb(102, 126, 234));
+            
+            if (this.btnInstallZip != null)
+                StyleButton(this.btnInstallZip, PrimaryColor);
 
             this.lblStatus.Font = new Font("Microsoft YaHei UI", 9F);
             this.lblStatus.ForeColor = Color.FromArgb(80, 80, 80);
@@ -139,6 +149,229 @@ namespace AstralPartyModManager
             this.menuStrip.BackColor = PanelBackColor;
             this.menuStrip.ForeColor = Color.FromArgb(80, 80, 80);
             this.menuStrip.Font = new Font("Microsoft YaHei UI", 9F);
+
+            // 美化拖放提示区域
+            if (this.lblDragHint != null)
+            {
+                this.lblDragHint.Font = new Font("Microsoft YaHei UI", 9F, FontStyle.Italic);
+                this.lblDragHint.ForeColor = Color.FromArgb(108, 117, 125);
+                this.lblDragHint.BackColor = Color.FromArgb(240, 248, 255);
+                this.lblDragHint.BorderStyle = BorderStyle.FixedSingle;
+                this.lblDragHint.TextAlign = ContentAlignment.MiddleCenter;
+            }
+        }
+
+        private void InitializeDragDrop()
+        {
+            // 启用拖放
+            this.AllowDrop = true;
+            this.dgvMods.AllowDrop = true;
+            
+            // 注册事件
+            this.DragEnter += MainForm_DragEnter;
+            this.DragDrop += MainForm_DragDrop;
+            
+            this.AppendDebugLog("已启用拖放支持");
+        }
+
+        private void MainForm_DragEnter(object sender, DragEventArgs e)
+        {
+            if (e.Data.GetDataPresent(DataFormats.FileDrop))
+            {
+                string[] files = (string[])e.Data.GetData(DataFormats.FileDrop);
+                // 检查是否有zip文件
+                if (files.Any(f => f.EndsWith(".zip", StringComparison.OrdinalIgnoreCase)))
+                {
+                    e.Effect = DragDropEffects.Copy;
+                    return;
+                }
+            }
+            e.Effect = DragDropEffects.None;
+        }
+
+        private void MainForm_DragDrop(object sender, DragEventArgs e)
+        {
+            if (!e.Data.GetDataPresent(DataFormats.FileDrop))
+                return;
+
+            string[] files = (string[])e.Data.GetData(DataFormats.FileDrop);
+            var zipFiles = files.Where(f => f.EndsWith(".zip", StringComparison.OrdinalIgnoreCase)).ToArray();
+
+            if (!zipFiles.Any())
+            {
+                MessageBox.Show("只支持拖放ZIP文件，请拖放Mod打包后的ZIP文件。", "格式错误", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+
+            // 处理每个拖放的ZIP文件
+            int successCount = 0;
+            int failCount = 0;
+            List<string> errors = new List<string>();
+
+            foreach (var zipPath in zipFiles)
+            {
+                this.AppendDebugLog($"开始处理拖放ZIP: {zipPath}");
+                
+                if (!InstallZipMod(zipPath, out string error))
+                {
+                    failCount++;
+                    errors.Add($"{Path.GetFileName(zipPath)}: {error}");
+                    this.AppendDebugLog($"安装失败: {error}");
+                }
+                else
+                {
+                    successCount++;
+                    this.AppendDebugLog($"安装成功: {zipPath}");
+                }
+            }
+
+            // 刷新列表
+            this.LoadModList();
+
+            // 显示结果
+            string resultMessage =
+                $"处理完成:\n成功: {successCount} 个\n失败: {failCount} 个\n\n" +
+                string.Join("\n", errors);
+
+            if (failCount == 0)
+            {
+                MessageBox.Show($"成功安装 {successCount} 个Mod!", "安装完成", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            }
+            else
+            {
+                MessageBox.Show(resultMessage, "部分安装失败", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            }
+        }
+
+        /// <summary>
+        /// 安装ZIP Mod到mods目录
+        /// </summary>
+        private bool InstallZipMod(string zipPath, out string errorMessage)
+        {
+            errorMessage = string.Empty;
+            
+            try
+            {
+                string gamePath = this.configManager.GamePath;
+                if (!Directory.Exists(gamePath))
+                {
+                    errorMessage = "游戏目录不存在，请先在设置中配置正确的游戏路径";
+                    return false;
+                }
+
+                string modPath = this.configManager.ModPath;
+                if (!Directory.Exists(modPath))
+                {
+                    Directory.CreateDirectory(modPath);
+                }
+
+                // 使用ZipArchive解压
+                using var zip = System.IO.Compression.ZipFile.OpenRead(zipPath);
+                
+                this.AppendDebugLog($"ZIP包含 {zip.Entries.Count} 个文件");
+
+                // 检查ZIP结构，判断是否是标准Mod包
+                bool hasStandardStructure = zip.Entries.Any(e =>
+                    e.FullName.StartsWith("Mods/", StringComparison.OrdinalIgnoreCase) ||
+                    e.FullName.StartsWith("ModResources/", StringComparison.OrdinalIgnoreCase)
+                );
+
+                if (hasStandardStructure)
+                {
+                    // 标准结构，直接解压到游戏根目录（Mods和ModResources会自动对应）
+                    this.AppendDebugLog($"检测到标准打包结构，解压到游戏根目录");
+                    ExtractZipToDirectory(zip, gamePath);
+                }
+                else
+                {
+                    // 获取ZIP名称作为Mod名称
+                    string modName = Path.GetFileNameWithoutExtension(zipPath);
+                    // 清理名称 - 移除版本后缀如 -v1.0.0-for-Player
+                    modName = System.Text.RegularExpressions.Regex.Replace(modName, @"[-_]v?\d+(\.\d+)*.*$", "").Trim('-', '_');
+                    
+                    string targetDir = Path.Combine(modPath, modName);
+                    if (!Directory.Exists(targetDir))
+                        Directory.CreateDirectory(targetDir);
+                    
+                    this.AppendDebugLog($"非标准结构，创建Mod目录: {targetDir}");
+                    ExtractZipToDirectory(zip, targetDir);
+                }
+
+                this.AppendDebugLog($"解压完成: {zipPath}");
+                return true;
+            }
+            catch (IOException ioEx)
+            {
+                errorMessage = $"文件访问错误: {ioEx.Message}\n请检查文件是否被占用";
+                return false;
+            }
+            catch (Exception ex)
+            {
+                errorMessage = ex.Message;
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// 解压ZIP到目标目录
+        /// </summary>
+        private void ExtractZipToDirectory(System.IO.Compression.ZipArchive zip, string targetDir)
+        {
+            foreach (var entry in zip.Entries)
+            {
+                // 跳过目录条目
+                if (string.IsNullOrEmpty(entry.Name))
+                    continue;
+
+                // 处理正斜杠路径
+                string entryPath = entry.FullName.Replace('/', Path.DirectorySeparatorChar);
+                string targetPath = Path.Combine(targetDir, entryPath);
+                string? targetDirPath = Path.GetDirectoryName(targetPath);
+                
+                if (!string.IsNullOrEmpty(targetDirPath) && !Directory.Exists(targetDirPath))
+                {
+                    Directory.CreateDirectory(targetDirPath);
+                }
+
+                // 如果文件已存在，删除
+                if (File.Exists(targetPath))
+                {
+                    File.Delete(targetPath);
+                }
+                
+                // 手动解压，避免扩展方法依赖问题
+                using (var fileStream = new FileStream(targetPath, FileMode.Create, FileAccess.Write))
+                using (var entryStream = entry.Open())
+                {
+                    entryStream.CopyTo(fileStream);
+                }
+            }
+        }
+
+        /// <summary>
+        /// 手动选择ZIP文件安装
+        /// </summary>
+        private void BtnInstallZip_Click(object sender, EventArgs e)
+        {
+            using var openFileDialog = new OpenFileDialog();
+            openFileDialog.Filter = "ZIP压缩包 (*.zip)|*.zip|所有文件 (*.*)|*.*";
+            openFileDialog.Title = "选择Mod ZIP包";
+            openFileDialog.RestoreDirectory = true;
+
+            if (openFileDialog.ShowDialog() == DialogResult.OK)
+            {
+                string zipPath = openFileDialog.FileName;
+                
+                if (InstallZipMod(zipPath, out string error))
+                {
+                    this.LoadModList();
+                    MessageBox.Show($"安装成功!\n已安装: {Path.GetFileName(zipPath)}", "完成", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                }
+                else
+                {
+                    MessageBox.Show($"安装失败: {error}", "错误", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                }
+            }
         }
 
         private void InitializeDebugMode()
@@ -693,6 +926,8 @@ namespace AstralPartyModManager
             this.btnDisable = new System.Windows.Forms.Button();
             this.btnRestore = new System.Windows.Forms.Button();
             this.btnLaunchGame = new System.Windows.Forms.Button();
+            this.btnInstallZip = new System.Windows.Forms.Button();
+            this.lblDragHint = new System.Windows.Forms.Label();
             this.lblActionHint = new System.Windows.Forms.Label();
             this.lblStatus = new System.Windows.Forms.Label();
             this.lblWarning = new System.Windows.Forms.Label();
@@ -740,13 +975,14 @@ namespace AstralPartyModManager
             this.grpMods.Controls.Add(this.dgvMods);
             this.grpMods.Location = new System.Drawing.Point(12, 35);
             this.grpMods.Name = "grpMods";
-            this.grpMods.Size = new System.Drawing.Size(856, 420);
+            this.grpMods.Size = new System.Drawing.Size(856, 380);
             this.grpMods.TabIndex = 1;
             this.grpMods.TabStop = false;
             this.grpMods.Text = "Mod 列表";
             this.grpMods.BackColor = Color.Transparent;
             this.grpMods.ForeColor = Color.FromArgb(80, 80, 80);
             this.grpMods.Font = new Font("Microsoft YaHei UI", 10F, FontStyle.Bold);
+            this.grpMods.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Bottom | AnchorStyles.Right;
 
             // dgvMods
             this.dgvMods.AllowUserToAddRows = false;
@@ -800,14 +1036,23 @@ namespace AstralPartyModManager
             this.grpActions.Controls.Add(this.btnLaunchGame);
             this.grpActions.Controls.Add(this.lblActionHint);
             this.grpActions.Location = new System.Drawing.Point(12, 461);
+            this.grpActions.Controls.Add(this.btnRefresh);
+            this.grpActions.Controls.Add(this.btnEnable);
+            this.grpActions.Controls.Add(this.btnDisable);
+            this.grpActions.Controls.Add(this.btnRestore);
+            this.grpActions.Controls.Add(this.btnInstallZip);
+            this.grpActions.Controls.Add(this.btnLaunchGame);
+            this.grpActions.Controls.Add(this.lblDragHint);
+            this.grpActions.Controls.Add(this.lblActionHint);
             this.grpActions.Name = "grpActions";
-            this.grpActions.Size = new System.Drawing.Size(856, 100);
+            this.grpActions.Size = new System.Drawing.Size(856, 130);
             this.grpActions.TabIndex = 2;
             this.grpActions.TabStop = false;
             this.grpActions.Text = "操作";
             this.grpActions.BackColor = Color.Transparent;
             this.grpActions.ForeColor = Color.FromArgb(80, 80, 80);
             this.grpActions.Font = new Font("Microsoft YaHei UI", 10F, FontStyle.Bold);
+            this.grpActions.Anchor = AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
 
             // btnRefresh
             this.btnRefresh.Location = new System.Drawing.Point(10, 25);
@@ -817,6 +1062,7 @@ namespace AstralPartyModManager
             this.btnRefresh.Text = "🔄 刷新";
             this.btnRefresh.UseVisualStyleBackColor = true;
             this.btnRefresh.Click += new System.EventHandler(this.BtnRefresh_Click);
+            this.btnRefresh.Anchor = AnchorStyles.Top | AnchorStyles.Left;
 
             // btnEnable
             this.btnEnable.Location = new System.Drawing.Point(120, 25);
@@ -826,6 +1072,7 @@ namespace AstralPartyModManager
             this.btnEnable.Text = "✅ 启用";
             this.btnEnable.UseVisualStyleBackColor = true;
             this.btnEnable.Click += new System.EventHandler(this.BtnEnable_Click);
+            this.btnEnable.Anchor = AnchorStyles.Top | AnchorStyles.Left;
 
             // btnDisable
             this.btnDisable.Location = new System.Drawing.Point(230, 25);
@@ -835,6 +1082,7 @@ namespace AstralPartyModManager
             this.btnDisable.Text = "⏸️ 禁用";
             this.btnDisable.UseVisualStyleBackColor = true;
             this.btnDisable.Click += new System.EventHandler(this.BtnDisable_Click);
+            this.btnDisable.Anchor = AnchorStyles.Top | AnchorStyles.Left;
 
             // btnRestore
             this.btnRestore.Location = new System.Drawing.Point(340, 25);
@@ -844,16 +1092,37 @@ namespace AstralPartyModManager
             this.btnRestore.Text = "♻️ 恢复纯净";
             this.btnRestore.UseVisualStyleBackColor = true;
             this.btnRestore.Click += new System.EventHandler(this.BtnRestore_Click);
+            this.btnRestore.Anchor = AnchorStyles.Top | AnchorStyles.Left;
+
+            // btnInstallZip
+            this.btnInstallZip.Location = new System.Drawing.Point(460, 25);
+            this.btnInstallZip.Name = "btnInstallZip";
+            this.btnInstallZip.Size = new System.Drawing.Size(140, 35);
+            this.btnInstallZip.TabIndex = 5;
+            this.btnInstallZip.Text = "📦 安装ZIP";
+            this.btnInstallZip.UseVisualStyleBackColor = true;
+            this.btnInstallZip.Click += new System.EventHandler(this.BtnInstallZip_Click);
+            this.btnInstallZip.Anchor = AnchorStyles.Top | AnchorStyles.Right;
 
             // btnLaunchGame
-            this.btnLaunchGame.Location = new System.Drawing.Point(740, 25);
+            this.btnLaunchGame.Location = new System.Drawing.Point(610, 25);
             this.btnLaunchGame.Name = "btnLaunchGame";
             this.btnLaunchGame.Size = new System.Drawing.Size(110, 35);
             this.btnLaunchGame.TabIndex = 4;
             this.btnLaunchGame.Text = "🎮 启动游戏";
             this.btnLaunchGame.UseVisualStyleBackColor = true;
             this.btnLaunchGame.Click += new System.EventHandler(this.BtnLaunchGame_Click);
+            this.btnLaunchGame.Anchor = AnchorStyles.Top | AnchorStyles.Right;
 
+            // lblDragHint
+            this.lblDragHint.Location = new System.Drawing.Point(10, 70);
+            this.lblDragHint.Name = "lblDragHint";
+            this.lblDragHint.Size = new System.Drawing.Size(830, 32);
+            this.lblDragHint.Text = "📥 拖动ZIP文件到此处即可自动安装Mod";
+            this.lblDragHint.Anchor = AnchorStyles.Left | AnchorStyles.Right;
+            this.lblDragHint.BackColor = Color.FromArgb(240, 248, 255);
+            this.lblDragHint.ForeColor = Color.FromArgb(50, 80, 120);
+            this.lblDragHint.Font = new Font("Microsoft YaHei UI", 9F, FontStyle.Italic);
             // lblActionHint
             this.lblActionHint.AutoSize = true;
             this.lblActionHint.Font = new System.Drawing.Font("Microsoft YaHei UI", 9F);
@@ -867,25 +1136,25 @@ namespace AstralPartyModManager
             this.lblWarning.AutoSize = true;
             this.lblWarning.Font = new System.Drawing.Font("Microsoft YaHei UI", 8.5F);
             this.lblWarning.ForeColor = Color.FromArgb(220, 53, 69);
-            this.lblWarning.Location = new System.Drawing.Point(12, 575);
+            this.lblWarning.Location = new System.Drawing.Point(12, 605);
             this.lblWarning.Name = "lblWarning";
             this.lblWarning.Size = new System.Drawing.Size(860, 17);
             this.lblWarning.TabIndex = 3;
+            this.lblWarning.Anchor = AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
             this.lblWarning.Text =
                 "⚠️ 提示：Mod 禁用可能失效，建议恢复纯净后使用 Steam 验证游戏完整性检查";
-
             // lblStatus
             this.lblStatus.AutoSize = true;
             this.lblStatus.Font = new System.Drawing.Font("Microsoft YaHei UI", 9F);
             this.lblStatus.ForeColor = Color.FromArgb(80, 80, 80);
-            this.lblStatus.Location = new System.Drawing.Point(12, 598);
+            this.lblStatus.Location = new System.Drawing.Point(12, 628);
             this.lblStatus.Name = "lblStatus";
             this.lblStatus.Size = new System.Drawing.Size(80, 17);
             this.lblStatus.TabIndex = 4;
+            this.lblStatus.Anchor = AnchorStyles.Bottom | AnchorStyles.Left;
             this.lblStatus.Text = "状态：就绪";
-
             // pnlDebug
-            this.pnlDebug.Location = new System.Drawing.Point(12, 625);
+            this.pnlDebug.Location = new System.Drawing.Point(12, 655);
             this.pnlDebug.Name = "pnlDebug";
             this.pnlDebug.Size = new System.Drawing.Size(856, 150);
             this.pnlDebug.TabIndex = 5;
@@ -893,6 +1162,7 @@ namespace AstralPartyModManager
             this.pnlDebug.BorderStyle = BorderStyle.FixedSingle;
             this.pnlDebug.Controls.Add(this.txtDebugLog);
             this.pnlDebug.Controls.Add(this.lblDebugTitle);
+            this.pnlDebug.Anchor = AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
 
             // lblDebugTitle
             this.lblDebugTitle.AutoSize = true;
@@ -918,12 +1188,13 @@ namespace AstralPartyModManager
             this.txtDebugLog.BackColor = Color.FromArgb(20, 20, 20);
             this.txtDebugLog.ForeColor = Color.FromArgb(0, 255, 100);
             this.txtDebugLog.Font = new System.Drawing.Font("Consolas", 9F);
+            this.txtDebugLog.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Bottom | AnchorStyles.Right;
 
             // MainForm
             this.AutoScaleDimensions = new System.Drawing.SizeF(7F, 17F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
             this.BackColor = BackgroundColor;
-            this.ClientSize = new System.Drawing.Size(884, 780);
+            this.ClientSize = new System.Drawing.Size(884, 820);
             this.Controls.Add(this.pnlDebug);
             this.Controls.Add(this.lblStatus);
             this.Controls.Add(this.lblWarning);
@@ -931,9 +1202,10 @@ namespace AstralPartyModManager
             this.Controls.Add(this.grpMods);
             this.Controls.Add(this.menuStrip);
             this.Font = new System.Drawing.Font("Microsoft YaHei UI", 9F);
-            this.FormBorderStyle = System.Windows.Forms.FormBorderStyle.FixedSingle;
+            this.FormBorderStyle = System.Windows.Forms.FormBorderStyle.Sizable;
             this.MainMenuStrip = this.menuStrip;
-            this.MaximizeBox = false;
+            this.MaximizeBox = true;
+            this.MinimumSize = new Size(800, 700);
             this.Name = "MainForm";
             this.StartPosition = System.Windows.Forms.FormStartPosition.CenterScreen;
             this.Text = "✨ APmodManager";
