@@ -1,6 +1,5 @@
-// <copyright file="Program.cs" company="PlaceholderCompany">
-// Copyright (c) PlaceholderCompany. All rights reserved.
-// </copyright>
+// AstralParty Mod Manager - 程序入口
+// Copyright (c) AstralParty Modding Community. All rights reserved.
 
 namespace AstralPartyModManager
 {

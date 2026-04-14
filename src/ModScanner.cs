@@ -1,6 +1,5 @@
-// <copyright file="ModScanner.cs" company="PlaceholderCompany">
-// Copyright (c) PlaceholderCompany. All rights reserved.
-// </copyright>
+// AstralParty Mod Manager - Mod 扫描
+// Copyright (c) AstralParty Modding Community. All rights reserved.
 
 namespace AstralPartyModManager
 {

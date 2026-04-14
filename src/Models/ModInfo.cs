@@ -1,11 +1,9 @@
-// <copyright file="ModInfo.cs" company="PlaceholderCompany">
-// Copyright (c) PlaceholderCompany. All rights reserved.
-// </copyright>
+// AstralParty Mod Manager - Mod 信息模型
+// Copyright (c) AstralParty Modding Community. All rights reserved.
 
 using System;
 using System.Collections.Generic;
 using System.IO;
-using AstralPartyModManager.Models;
 
 namespace AstralPartyModManager.Models
 {

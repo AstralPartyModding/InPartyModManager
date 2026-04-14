@@ -1,6 +1,5 @@
-// <copyright file="ModType.cs" company="PlaceholderCompany">
-// Copyright (c) PlaceholderCompany. All rights reserved.
-// </copyright>
+// AstralParty Mod Manager - Mod 类型枚举
+// Copyright (c) AstralParty Modding Community. All rights reserved.
 
 namespace AstralPartyModManager.Models
 {

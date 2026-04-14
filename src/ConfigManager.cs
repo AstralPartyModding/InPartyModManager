@@ -1,6 +1,5 @@
-// <copyright file="ConfigManager.cs" company="PlaceholderCompany">
-// Copyright (c) PlaceholderCompany. All rights reserved.
-// </copyright>
+// AstralParty Mod Manager - 配置管理
+// Copyright (c) AstralParty Modding Community. All rights reserved.
 
 namespace AstralPartyModManager
 {

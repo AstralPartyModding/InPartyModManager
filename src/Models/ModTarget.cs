@@ -1,6 +1,5 @@
-// <copyright file="ModTarget.cs" company="PlaceholderCompany">
-// Copyright (c) PlaceholderCompany. All rights reserved.
-// </copyright>
+// AstralParty Mod Manager - Mod 安装目标模型
+// Copyright (c) AstralParty Modding Community. All rights reserved.
 
 namespace AstralPartyModManager.Models
 {

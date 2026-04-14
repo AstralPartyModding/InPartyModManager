@@ -1,6 +1,5 @@
-// <copyright file="BackupManager.cs" company="PlaceholderCompany">
-// Copyright (c) PlaceholderCompany. All rights reserved.
-// </copyright>
+// AstralParty Mod Manager - AstralParty 星动派对 Mod 管理器
+// Copyright (c) AstralParty Modding Community. All rights reserved.
 
 namespace AstralPartyModManager
 {
@@ -162,7 +161,54 @@ namespace AstralPartyModManager
             string timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
             string backupDir = Path.Combine(this.backupRoot, timestamp, "game_files");
 
+            // 处理 MelonLoader 插件 DLL - 从 Disabled 目录移回 Mods 目录
+            string modsDir = Path.Combine(this.gamePath, "Mods");
+            string disabledDir = Path.Combine(modsDir, "Disabled");
+            
+            if (Directory.Exists(disabledDir))
+            {
+                // 查找所有和 modName 相关的 DLL 文件：
+                // 1. 精确匹配：modName.dll
+                // 2. 前缀匹配：modName.*.dll (例如 modName.Core.dll)
+                var pluginDlls = Directory.GetFiles(disabledDir, "*.dll")
+                    .Where(dll =>
+                    {
+                        var name = Path.GetFileNameWithoutExtension(dll);
+                        return name.Equals(modName, StringComparison.OrdinalIgnoreCase)
+                            || name.StartsWith($"{modName}.", StringComparison.OrdinalIgnoreCase);
+                    })
+                    .ToList();
+
+                foreach (var dllPath in pluginDlls)
+                {
+                    try
+                    {
+                        string fileName = Path.GetFileName(dllPath);
+                        string destPath = Path.Combine(modsDir, fileName);
+                        
+                        // 如果目标已存在，先删除
+                        if (File.Exists(destPath))
+                        {
+                            File.Delete(destPath);
+                        }
+                        
+                        File.Move(dllPath, destPath);
+                        Logger.Debug($"已从Disabled恢复插件DLL: {fileName}");
+                    }
+                    catch (Exception ex)
+                    {
+                        result.Errors.Add($"恢复插件DLL失败 {dllPath}: {ex.Message}");
+                        Logger.Warning($"恢复插件DLL失败：{dllPath}", ex);
+                    }
+                }
+            }
+
             Logger.Debug($"Mod '{modName}' 将安装 {targetRelativePaths.Count} 个文件");
+
+            bool modAlreadyEnabled = false;
+            // 检查是否Mod已经启用，如果已经启用说明我们正在重新安装它，此时需要特殊处理
+            // 如果Mod已经启用，说明目标文件已经被这个mod替换过了，此时再次备份会备份mod版本而不是原始版本
+            // 但实际上，我们不需要再次备份，因为原始备份已经存在了
 
             foreach (var relativePath in targetRelativePaths)
             {
@@ -206,6 +252,11 @@ namespace AstralPartyModManager
 
                 bool fileExists = File.Exists(gameFilePath);
 
+                if (fileExists && !relativePath.EndsWith(".bundle", StringComparison.OrdinalIgnoreCase))
+                {
+                    Logger.Debug($"准备备份：{relativePath} - 文件已存在，大小={new FileInfo(gameFilePath).Length} bytes");
+                }
+
                 backupInfo.Files.Add(
                     new BackupFile(
                         gameFilePath,
@@ -233,7 +284,11 @@ namespace AstralPartyModManager
 
                         File.Copy(gameFilePath, backupPath, overwrite: true);
                         result = result with { BackedUpCount = result.BackedUpCount + 1 };
-                        Logger.Debug($"已备份：{relativePath}");
+                        // bundle文件不逐行输出，减少日志，只在最后统计
+                        if (!relativePath.EndsWith(".bundle", StringComparison.OrdinalIgnoreCase))
+                        {
+                            Logger.Debug($"已备份：{SimplifyPathForLog(relativePath)}");
+                        }
                     }
                     catch (Exception ex)
                     {
@@ -297,6 +352,48 @@ namespace AstralPartyModManager
 
             var filesToInstall = this.GetFilesToInstall(modFolderPath, modType, targetDir);
 
+            // 处理 MelonLoader 插件 DLL - 从 Disabled 目录移回 Mods 目录
+            string modsDir = Path.Combine(this.gamePath, "Mods");
+            string disabledDir = Path.Combine(modsDir, "Disabled");
+            
+            if (Directory.Exists(disabledDir))
+            {
+                // 查找所有和 modName 相关的 DLL 文件：
+                // 1. 精确匹配：modName.dll
+                // 2. 前缀匹配：modName.*.dll (例如 modName.Core.dll)
+                var pluginDlls = Directory.GetFiles(disabledDir, "*.dll")
+                    .Where(dll =>
+                    {
+                        var name = Path.GetFileNameWithoutExtension(dll);
+                        return name.Equals(modName, StringComparison.OrdinalIgnoreCase)
+                            || name.StartsWith($"{modName}.", StringComparison.OrdinalIgnoreCase);
+                    })
+                    .ToList();
+
+                foreach (var dllPath in pluginDlls)
+                {
+                    try
+                    {
+                        string fileName = Path.GetFileName(dllPath);
+                        string destPath = Path.Combine(modsDir, fileName);
+                        
+                        // 如果目标已存在，先删除
+                        if (File.Exists(destPath))
+                        {
+                            File.Delete(destPath);
+                        }
+                        
+                        File.Move(dllPath, destPath);
+                        Logger.Debug($"已从Disabled恢复插件DLL: {fileName}");
+                    }
+                    catch (Exception ex)
+                    {
+                        result.Errors.Add($"恢复插件DLL失败 {dllPath}: {ex.Message}");
+                        Logger.Warning($"恢复插件DLL失败：{dllPath}", ex);
+                    }
+                }
+            }
+
             Logger.Debug($"Mod '{modName}' 将安装 {filesToInstall.Count} 个文件");
 
             foreach (var installFile in filesToInstall)
@@ -304,43 +401,60 @@ namespace AstralPartyModManager
                 string gameFilePath = installFile.Value;
                 string relativePath = GetRelativePath(gameFilePath, this.gamePath);
 
-                bool fileExists = File.Exists(gameFilePath);
-
-                backupInfo.Files.Add(
-                    new BackupFile(
-                        gameFilePath,
-                        !fileExists,
-                        fileExists ? ComputeFileHash(gameFilePath) : null
-                    )
-                );
-
-                if (!fileExists)
+                // 禁止安装/修改 MelonLoader 目录下的任何文件
+                if (gameFilePath.IndexOf("MelonLoader", StringComparison.OrdinalIgnoreCase) >= 0)
                 {
-                    result = result with { NewFileCount = result.NewFileCount + 1 };
-                    Logger.Debug($"新文件：{relativePath}");
+                    Logger.Warning($"跳过安装到MelonLoader目录：{relativePath} - 不允许修改MelonLoader文件夹下的文件");
+                    result.Errors.Add($"尝试修改MelonLoader目录下的文件已被阻止：{relativePath}");
+                    continue;
                 }
-                else
-                {
-                    try
-                    {
-                        string backupPath = Path.Combine(backupDir, relativePath);
-                        string backupFileDir = Path.GetDirectoryName(backupPath);
 
-                        if (!Directory.Exists(backupFileDir))
-                        {
-                            Directory.CreateDirectory(backupFileDir);
-                        }
+               bool fileExists = File.Exists(gameFilePath);
 
-                        File.Copy(gameFilePath, backupPath, overwrite: true);
-                        result = result with { BackedUpCount = result.BackedUpCount + 1 };
-                        Logger.Debug($"已备份：{relativePath}");
-                    }
-                    catch (Exception ex)
-                    {
-                        result.Errors.Add($"备份文件失败 {relativePath}: {ex.Message}");
-                        Logger.Warning($"备份文件失败：{gameFilePath}", ex);
-                    }
-                }
+               if (fileExists && !relativePath.EndsWith(".bundle", StringComparison.OrdinalIgnoreCase))
+               {
+                   Logger.Debug($"准备备份：{relativePath} - 文件已存在，大小={new FileInfo(gameFilePath).Length} bytes");
+               }
+
+               backupInfo.Files.Add(
+                   new BackupFile(
+                       gameFilePath,
+                       !fileExists,
+                       fileExists ? ComputeFileHash(gameFilePath) : null
+                   )
+               );
+
+               if (!fileExists)
+               {
+                   result = result with { NewFileCount = result.NewFileCount + 1 };
+                   Logger.Debug($"新文件：{relativePath}");
+               }
+               else
+               {
+                   try
+                   {
+                       string backupPath = Path.Combine(backupDir, relativePath);
+                       string backupFileDir = Path.GetDirectoryName(backupPath);
+
+                       if (!Directory.Exists(backupFileDir))
+                       {
+                           Directory.CreateDirectory(backupFileDir);
+                       }
+
+                       File.Copy(gameFilePath, backupPath, overwrite: true);
+                       result = result with { BackedUpCount = result.BackedUpCount + 1 };
+                       // bundle文件不逐行输出，减少日志，只在最后统计
+                       if (!relativePath.EndsWith(".bundle", StringComparison.OrdinalIgnoreCase))
+                       {
+                           Logger.Debug($"已备份：{SimplifyPathForLog(relativePath)}");
+                       }
+                   }
+                   catch (Exception ex)
+                   {
+                       result.Errors.Add($"备份文件失败 {relativePath}: {ex.Message}");
+                       Logger.Warning($"备份文件失败：{gameFilePath}", ex);
+                   }
+               }
             }
 
             this.SaveBackupInfo(backupInfo, timestamp);
@@ -417,9 +531,50 @@ namespace AstralPartyModManager
                 string relativePath = GetRelativePath(file, sourceDir);
                 string gameFilePath;
 
-                if (modType == ModType.Plugin)
+                // 特殊处理：如果dll在mod内部的 mods/ 或 Mods/ 子目录，直接放到游戏根目录的 Mods/ 下
+                // 不管是什么mod类型，有些混合类型mod（如YuGiOhCardMod）也包含插件dll需要这个处理
+                // 这是MelonLoader的标准要求，它只加载游戏根目录 Mods/ 中的dll
+                bool handled = false;
+                string lowerRelative = relativePath.ToLowerInvariant();
+                int modsIndex = lowerRelative.IndexOf("mods", StringComparison.OrdinalIgnoreCase);
+                if (modsIndex >= 0)
                 {
-                    gameFilePath = Path.Combine(this.gamePath, relativePath);
+                    // 找到 mods/ 目录，看看dll是否就在这个目录下
+                    // 不管mods在哪个层级，只要dll直接在mods目录下，就提取到游戏根目录 Mods/
+                    string directory = Path.GetDirectoryName(relativePath);
+                    if (!string.IsNullOrEmpty(directory))
+                    {
+                        string dirName = Path.GetFileName(directory);
+                        if (string.Equals(dirName, "mods", StringComparison.OrdinalIgnoreCase))
+                        {
+                            // dll直接在 mods 目录下，提取到游戏根目录 Mods/
+                            string fileName = Path.GetFileName(file);
+                            gameFilePath = Path.Combine(this.gamePath, "Mods", fileName);
+                            handled = true;
+                        }
+                    }
+                }
+
+                // 如果没有找到 mods 目录，或者dll不在mods目录下，走正常流程
+                if (!handled && modType == ModType.Plugin)
+                {
+                    // 对于纯Plugin类型mod，根目录下的dll也放到游戏根目录
+                    string fileName = Path.GetFileName(file);
+                    if (Path.GetExtension(file).Equals(".dll", StringComparison.OrdinalIgnoreCase))
+                    {
+                        // Plugin类型根目录的dll直接放到游戏根目录 Mods/
+                        gameFilePath = Path.Combine(this.gamePath, "Mods", fileName);
+                    }
+                    else if (lowerRelative.StartsWith("mods"))
+                    {
+                        // 处理文件名本身就是mods开头但不是目录的情况
+                        gameFilePath = Path.Combine(this.gamePath, relativePath);
+                    }
+                    else
+                    {
+                        // 正常路径保持不变
+                        gameFilePath = Path.Combine(this.gamePath, relativePath);
+                    }
                 }
                 else
                 {
@@ -458,6 +613,31 @@ namespace AstralPartyModManager
 
                 string relativePath = GetRelativePath(file, standardDir);
                 string gameFilePath;
+
+                // 特殊处理：如果dll在mod内部的 mods/ 或 Mods/ 子目录，直接放到游戏根目录的 Mods/ 下
+                // 不管是什么mod类型，有些混合类型mod（如YuGiOhCardMod）也包含插件dll需要这个处理
+                // 这是MelonLoader的标准要求，它只加载游戏根目录 Mods/ 中的dll
+                string lower = relativePath.ToLowerInvariant();
+                int modsIndex = lower.IndexOf("mods", StringComparison.OrdinalIgnoreCase);
+                if (modsIndex >= 0)
+                {
+                    // 找到 mods/ 目录，看看dll是否就在这个目录下
+                    // 不管mods在哪个层级，只要dll直接在mods目录下，就提取到游戏根目录 Mods/
+                    string directory = Path.GetDirectoryName(relativePath);
+                    if (!string.IsNullOrEmpty(directory))
+                    {
+                        string dirName = Path.GetFileName(directory);
+                        if (string.Equals(dirName, "mods", StringComparison.OrdinalIgnoreCase))
+                        {
+                            // dll直接在 mods 目录下，提取到游戏根目录 Mods/
+                            string fileName = Path.GetFileName(file);
+                            gameFilePath = Path.Combine(this.gamePath, "Mods", fileName);
+                            result.Add(file, gameFilePath);
+                            continue;
+                        }
+                    }
+                }
+                // 如果没有找到 mods 目录，或者dll不在mods目录下，走正常流程
 
                 if (modType == ModType.Addressables)
                 {
@@ -516,7 +696,26 @@ namespace AstralPartyModManager
                 }
                 else if (modType == ModType.Plugin)
                 {
-                    gameFilePath = Path.Combine(this.gamePath, relativePath);
+                    // 特殊处理：如果dll在mod内部的 mods/ 或 Mods/ 子目录，直接放到游戏根目录的 Mods/ 下
+                    // 这是MelonLoader的标准要求，它只加载游戏根目录 Mods/ 中的dll
+                    string lowerRelative = relativePath.ToLowerInvariant();
+                    if (lowerRelative.StartsWith("mods\\", StringComparison.Ordinal) ||
+                        lowerRelative.StartsWith("mods/", StringComparison.Ordinal))
+                    {
+                        // 移除前面的 mods/ 目录，直接放到游戏根目录的 Mods/
+                        string fileName = Path.GetFileName(file);
+                        gameFilePath = Path.Combine(this.gamePath, "Mods", fileName);
+                    }
+                    else if (lowerRelative.StartsWith("mods"))
+                    {
+                        // 处理文件名本身就是mods开头但不是目录的情况
+                        gameFilePath = Path.Combine(this.gamePath, relativePath);
+                    }
+                    else
+                    {
+                        // 正常路径保持不变
+                        gameFilePath = Path.Combine(this.gamePath, relativePath);
+                    }
                 }
                 else
                 {
@@ -692,13 +891,24 @@ namespace AstralPartyModManager
                 string relativePath = GetRelativePath(gameFilePath, this.gamePath);
                 try
                 {
+                    // 禁止修改 MelonLoader 目录下的任何文件
+                    if (gameFilePath.IndexOf("MelonLoader", StringComparison.OrdinalIgnoreCase) >= 0)
+                    {
+                        Logger.Debug($"跳过MelonLoader目录下的文件：{relativePath}");
+                        continue;
+                    }
+
                     if (file.IsNewFile)
                     {
                         if (File.Exists(gameFilePath))
                         {
                             File.Delete(gameFilePath);
                             result = result with { DeletedCount = result.DeletedCount + 1 };
-                            Logger.Debug($"已删除新文件：{relativePath}");
+                            // bundle文件不逐行输出，减少日志，只在最后统计
+                            if (!relativePath.EndsWith(".bundle", StringComparison.OrdinalIgnoreCase))
+                            {
+                                Logger.Debug($"已删除新文件：{SimplifyPathForLog(relativePath)}");
+                            }
                         }
                         else
                         {
@@ -719,13 +929,21 @@ namespace AstralPartyModManager
 
                             File.Copy(backupPath, gameFilePath, overwrite: true);
                             result = result with { RestoredCount = result.RestoredCount + 1 };
-                            Logger.Debug($"已恢复文件：{relativePath}");
+                            // bundle文件不逐行输出，减少日志，只在最后统计
+                            if (!relativePath.EndsWith(".bundle", StringComparison.OrdinalIgnoreCase))
+                            {
+                                Logger.Debug($"已恢复文件：{SimplifyPathForLog(relativePath)}");
+                            }
                         }
                         else if (File.Exists(gameFilePath))
                         {
                             File.Delete(gameFilePath);
                             result = result with { DeletedCount = result.DeletedCount + 1 };
-                            Logger.Debug($"备份不存在，已删除文件：{relativePath}");
+                            // bundle文件不逐行输出，减少日志，只在最后统计
+                            if (!relativePath.EndsWith(".bundle", StringComparison.OrdinalIgnoreCase))
+                            {
+                                Logger.Debug($"备份不存在，已删除文件：{SimplifyPathForLog(relativePath)}");
+                            }
                         }
                         else
                         {
@@ -752,14 +970,12 @@ namespace AstralPartyModManager
 
             Logger.Info($"Mod '{modName}' 禁用完成：{result.Message}");
 
-            // 对于Plugin类型，即使有备份，也要额外调用DisableModByType来确保
-            // 删除所有常见的插件文件（如星引擎加速等特殊插件）
-            if (modType == ModType.Plugin)
-            {
-                var (success, message) = this.DisableModByType(modName, modType, result);
-                // 不需要修改Success状态，因为主要恢复已经完成
-                Logger.Info($"Plugin类型Mod额外清理完成：{message}");
-            }
+            // 不管什么类型的Mod，都额外调用DisableModByType来查找
+            // 并清理可能存在的 MelonLoader 插件 DLL
+            // 有些混合类型的Mod（如YuGiOhCardMod）同时包含资源和插件dll，需要特殊处理
+            var (successExtra, messageExtra) = this.DisableModByType(modName, modType, result);
+            // 不需要修改Success状态，因为主要恢复已经完成
+            Logger.Info($"任何类型Mod额外插件清理完成：{messageExtra}");
 
             // 恢复完成后删除备份，节省空间
             if (backupInfo != null)
@@ -779,21 +995,110 @@ namespace AstralPartyModManager
             RestoreResult result
         )
         {
+            var commonPluginFiles = new[]
+            {
+                "version.dll",
+                "speedhack_config.json",
+                "winmm.dll",
+                "dinput8.dll",
+                "winhttp.dll",
+                "UnityDoorstop.dll",
+                "doorstop_config.ini",
+                "config.ini",
+            };
+            int deletedCount = 0;
+            int movedCount = 0;
+
+            // 处理 MelonLoader 插件 DLL - 移动到 Disabled 目录
+            // 不管Mod是什么类型，都检查所有可能放置插件dll的位置：
+            // 1. 标准位置：游戏根目录 Mods (大写M)
+            // 2. 小写位置：游戏根目录 mods (小写m)
+            // 3. 错误位置：被错误安装到 StreamingAssets\aa\StandaloneWindows64\Mods
+            List<string> possibleModsDirs = new List<string>
+            {
+                Path.Combine(this.gamePath, "Mods"),
+                Path.Combine(this.gamePath, "mods"),
+                Path.Combine(this.dataPath, "StreamingAssets", "aa", "StandaloneWindows64", "Mods"),
+                Path.Combine(this.dataPath, "StreamingAssets", "aa", "StandaloneWindows64", "mods")
+            };
+            
+            // 统一使用 Mods/Disabled 作为禁用目录（MelonLoader标准目录是大写Mods）
+            string standardModsDir = Path.Combine(this.gamePath, "Mods");
+            string disabledDir = Path.Combine(standardModsDir, "Disabled");
+            
+            // 确保Disabled目录存在
+            if (!Directory.Exists(disabledDir))
+            {
+                Directory.CreateDirectory(disabledDir);
+                Logger.Info($"创建Disabled目录: {disabledDir}");
+            }
+
+            // 收集所有可能目录中的匹配 DLL
+            List<string> pluginDlls = new List<string>();
+            foreach (string currentModsDir in possibleModsDirs)
+            {
+                if (Directory.Exists(currentModsDir))
+                {
+                    // 查找所有和 modName 相关的 DLL 文件：
+                    // 1. 精确匹配：modName.dll
+                    // 2. 前缀匹配：modName.*.dll (例如 modName.Core.dll)
+                    var dllsInDir = Directory.GetFiles(currentModsDir, "*.dll")
+                        .Where(dll =>
+                        {
+                            var name = Path.GetFileNameWithoutExtension(dll);
+                            return name.Equals(modName, StringComparison.OrdinalIgnoreCase)
+                                || name.StartsWith($"{modName}.", StringComparison.OrdinalIgnoreCase);
+                        })
+                        .ToList();
+                     
+                    pluginDlls.AddRange(dllsInDir);
+                    Logger.Debug($"在目录 {currentModsDir} 找到 {dllsInDir.Count} 个匹配DLL");
+                }
+            }
+
+            foreach (var dllPath in pluginDlls)
+            {
+                try
+                {
+                    // 再次检查文件是否存在，因为可能已经被之前的步骤删除了
+                    if (!File.Exists(dllPath))
+                    {
+                        Logger.Debug($"插件DLL不存在，跳过：{dllPath}");
+                        continue;
+                    }
+
+                    // 禁止移动/修改 MelonLoader 目录下的任何文件
+                    string dllDirectory = Path.GetDirectoryName(dllPath) ?? string.Empty;
+                    if (dllDirectory.IndexOf("MelonLoader", StringComparison.OrdinalIgnoreCase) >= 0)
+                    {
+                        Logger.Debug($"跳过MelonLoader目录下的文件：{dllPath}");
+                        continue;
+                    }
+
+                    string fileName = Path.GetFileName(dllPath);
+                    string destPath = Path.Combine(disabledDir, fileName);
+                    
+                    // 如果目标已存在，先删除
+                    if (File.Exists(destPath))
+                    {
+                        File.Delete(destPath);
+                    }
+                      
+                    File.Move(dllPath, destPath);
+                    movedCount++;
+                    Logger.Debug($"已移动插件DLL到Disabled: {fileName}");
+                }
+                catch (Exception ex)
+                {
+                    result.Errors.Add($"移动插件DLL失败 {dllPath}: {ex.Message}");
+                    Logger.Warning($"移动插件DLL失败：{dllPath}", ex);
+                }
+            }
+
+            // 如果是Plugin类型才删除常见注入文件，避免误删
             if (modType == ModType.Plugin)
             {
-                var commonPluginFiles = new[]
-                {
-                    "version.dll",
-                    "speedhack_config.json",
-                    "winmm.dll",
-                    "dinput8.dll",
-                    "winhttp.dll",
-                    "UnityDoorstop.dll",
-                    "doorstop_config.ini",
-                    "config.ini",
-                };
-                int deletedCount = 0;
-
+                // 删除常见的注入文件
                 foreach (var fileName in commonPluginFiles)
                 {
                     try
@@ -815,11 +1120,20 @@ namespace AstralPartyModManager
 
                 bool success = result.Errors.Count == 0;
                 string message = success
-                    ? $"已尝试禁用插件（无备份信息），{deletedCount} 个文件已删除"
-                    : $"禁用部分文件失败：{string.Join("; ", result.Errors)}";
+                    ? $"已禁用插件：{movedCount} 个MelonLoader DLL已移动到Disabled目录，{deletedCount} 个注入文件已删除"
+                    : $"禁用完成，但有 {result.Errors.Count} 个错误：\n{string.Join("; ", result.Errors)}";
                 return (success, message);
             }
 
+            // 对于非Plugin类型（如Addressables），我们已经完成了DLL清理
+            // 不需要处理其他类型的特殊逻辑（因为其他逻辑在主恢复流程中已经处理）
+            bool successDefault = result.Errors.Count == 0;
+            string messageDefault = successDefault
+                ? $"已完成额外插件清理：{movedCount} 个MelonLoader DLL已移动到Disabled目录"
+                : $"插件清理完成，但有 {result.Errors.Count} 个错误：\n{string.Join("; ", result.Errors)}";
+            return (successDefault, messageDefault);
+
+            // 保留原有的特殊类型处理逻辑，仅当没有备份信息且走到DisableModByType时使用
             if (modType == ModType.Addressables || modType == ModType.Comprehensive)
             {
                 // 对于Comprehensive类型，不应该批量删除所有bundle文件
@@ -846,7 +1160,7 @@ namespace AstralPartyModManager
                     "aa",
                     "StandaloneWindows64"
                 );
-                int deletedCount = 0;
+                int bundleDeletedCount = 0;
 
                 if (Directory.Exists(targetDir))
                 {
@@ -858,7 +1172,7 @@ namespace AstralPartyModManager
                             try
                             {
                                 File.Delete(bundleFile);
-                                deletedCount++;
+                                bundleDeletedCount++;
                                 Logger.Debug(
                                     $"已删除bundle文件（无备份）: {Path.GetFileName(bundleFile)}"
                                 );
@@ -881,7 +1195,7 @@ namespace AstralPartyModManager
 
                 bool success = result.Errors.Count == 0;
                 string message = success
-                    ? $"已尝试禁用 {modType} 类型 Mod（无备份信息），{deletedCount} 个bundle文件已删除\n游戏启动时会自动重新下载原版文件"
+                    ? $"已尝试禁用 {modType} 类型 Mod（无备份信息），{bundleDeletedCount} 个bundle文件已删除\n游戏启动时会自动重新下载原版文件"
                     : $"禁用完成，但有 {result.Errors.Count} 个错误：\n{string.Join("; ", result.Errors)}";
                 return (success, message);
             }
@@ -902,7 +1216,7 @@ namespace AstralPartyModManager
                     "com.unity.addressables",
                     "AssetBundles"
                 );
-                int deletedCount = 0;
+                int voiceDeletedCount = 0;
 
                 if (Directory.Exists(targetDir))
                 {
@@ -914,7 +1228,7 @@ namespace AstralPartyModManager
                             try
                             {
                                 File.Delete(bundleFile);
-                                deletedCount++;
+                                voiceDeletedCount++;
                                 Logger.Debug(
                                     $"已删除语音bundle文件（无备份）: {Path.GetFileName(bundleFile)}"
                                 );
@@ -937,7 +1251,7 @@ namespace AstralPartyModManager
 
                 bool success = result.Errors.Count == 0;
                 string message = success
-                    ? $"已尝试禁用语音Mod（无备份信息），{deletedCount} 个文件已删除\n游戏启动时会自动重新下载原版文件"
+                    ? $"已尝试禁用语音Mod（无备份信息），{voiceDeletedCount} 个文件已删除\n游戏启动时会自动重新下载原版文件"
                     : $"禁用完成，但有 {result.Errors.Count} 个错误：\n{string.Join("; ", result.Errors)}";
                 return (success, message);
             }
@@ -1153,5 +1467,51 @@ namespace AstralPartyModManager
                 return null;
             }
         }
+
+       /// <summary>
+       /// 简化路径显示，对于bundle文件只保留从cards/events开始的路径，减少日志长度.
+       /// 通常mod只包含cards和events两个目录，所以从这里开始显示即可.
+       /// </summary>
+       private static string SimplifyPathForLog(string relativePath)
+       {
+           if (string.IsNullOrEmpty(relativePath))
+           {
+               return relativePath;
+           }
+
+           // 如果是.bundle文件，从cards/events开头或者最后部分
+           if (relativePath.EndsWith(".bundle", StringComparison.OrdinalIgnoreCase))
+           {
+               // 将路径分割成各个部分
+               string[] parts = relativePath.Split(new[] { '/', '\\' }, StringSplitOptions.RemoveEmptyEntries);
+
+               // 从后往前找 cards 或 events 目录
+               for (int i = parts.Length - 2; i >= 0; i--)
+               {
+                   string part = parts[i];
+                   if (string.Equals(part, "cards", StringComparison.OrdinalIgnoreCase) ||
+                       string.Equals(part, "events", StringComparison.OrdinalIgnoreCase))
+                   {
+                       // 从这个目录开始拼接后面所有部分
+                       return Path.Combine(string.Join(Path.DirectorySeparatorChar.ToString(), parts.Skip(i)));
+                   }
+               }
+
+               // 如果没找到 cards/events，回退到只显示最后一个目录 + 文件名
+               string directory = Path.GetDirectoryName(relativePath);
+               string fileName = Path.GetFileName(relativePath);
+
+               if (string.IsNullOrEmpty(directory))
+               {
+                   return fileName;
+               }
+
+               string parentDir = Path.GetFileName(directory);
+               return Path.Combine(parentDir, fileName);
+           }
+
+           // 其他文件保持原路径不变
+           return relativePath;
+       }
     }
 }

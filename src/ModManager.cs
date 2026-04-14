@@ -1,6 +1,5 @@
-// <copyright file="ModManager.cs" company="PlaceholderCompany">
-// Copyright (c) PlaceholderCompany. All rights reserved.
-// </copyright>
+// AstralParty Mod Manager - Mod 安装核心逻辑
+// Copyright (c) AstralParty Modding Community. All rights reserved.
 
 namespace AstralPartyModManager
 {
@@ -105,6 +104,52 @@ namespace AstralPartyModManager
                     default:
                         result = this.InstallGenericMod(modInfo);
                         break;
+                }
+
+                // 安装完成后，检查是否有 MelonLoader 插件 DLL 在 Disabled 目录，如果有则恢复
+                if (result.Success)
+                {
+                    string modsDir = Path.Combine(this.gamePath, "Mods");
+                    string disabledDir = Path.Combine(modsDir, "Disabled");
+                    
+                    if (Directory.Exists(disabledDir))
+                    {
+                        // 查找所有和 modName 相关的 DLL 文件：
+                        // 1. 精确匹配：modName.dll
+                        // 2. 前缀匹配：modName.*.dll (例如 modName.Core.dll)
+                        var pluginDlls = Directory.GetFiles(disabledDir, "*.dll")
+                            .Where(dll =>
+                            {
+                                var name = Path.GetFileNameWithoutExtension(dll);
+                                return name.Equals(modInfo.Name, StringComparison.OrdinalIgnoreCase)
+                                    || name.StartsWith($"{modInfo.Name}.", StringComparison.OrdinalIgnoreCase);
+                            })
+                            .ToList();
+
+                        foreach (var dllPath in pluginDlls)
+                        {
+                            try
+                            {
+                                string fileName = Path.GetFileName(dllPath);
+                                string destPath = Path.Combine(modsDir, fileName);
+                                
+                                // 如果目标已存在，先删除
+                                if (File.Exists(destPath))
+                                {
+                                    File.Delete(destPath);
+                                }
+                                
+                                File.Move(dllPath, destPath);
+                                result.InstalledFiles.Add(Path.Combine("Mods", fileName));
+                                Logger.Debug($"已从Disabled恢复插件DLL: {fileName}");
+                            }
+                            catch (Exception ex)
+                            {
+                                result.Errors.Add($"恢复插件DLL失败 {dllPath}: {ex.Message}");
+                                Logger.Warning($"恢复插件DLL失败：{dllPath}", ex);
+                            }
+                        }
+                    }
                 }
 
                 if (result.Success)

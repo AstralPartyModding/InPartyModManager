@@ -1,10 +1,8 @@
-// <copyright file="BackupModels.cs" company="PlaceholderCompany">
-// Copyright (c) PlaceholderCompany. All rights reserved.
-// </copyright>
+// AstralParty Mod Manager - 备份数据模型
+// Copyright (c) AstralParty Modding Community. All rights reserved.
 
 using System;
 using System.Collections.Generic;
-using AstralPartyModManager.Models;
 
 namespace AstralPartyModManager.Models
 {

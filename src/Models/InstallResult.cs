@@ -1,6 +1,5 @@
-// <copyright file="InstallResult.cs" company="PlaceholderCompany">
-// Copyright (c) PlaceholderCompany. All rights reserved.
-// </copyright>
+// AstralParty Mod Manager - 安装结果模型
+// Copyright (c) AstralParty Modding Community. All rights reserved.
 
 using System.Collections.Generic;
 

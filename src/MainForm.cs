@@ -1,6 +1,5 @@
-// <copyright file="MainForm.cs" company="PlaceholderCompany">
-// Copyright (c) PlaceholderCompany. All rights reserved.
-// </copyright>
+// AstralParty Mod Manager - 主窗口
+// Copyright (c) AstralParty Modding Community. All rights reserved.
 
 namespace AstralPartyModManager
 {
@@ -556,6 +555,7 @@ namespace AstralPartyModManager
                 try
                 {
                     this.AppendDebugLog($"开始启用 Mod: {modInfo.Name}");
+                    this.AppendDebugLog($"当前启用状态: {this.modStateManager.IsEnabled(modInfo.Name)}");
 
                     // 修复：先预测文件，再备份原始文件，最后安装Mod
                     // 1. 预测Mod会影响哪些文件
@@ -575,6 +575,30 @@ namespace AstralPartyModManager
                     }
 
                     this.AppendDebugLog($"预测到 {targetFiles.Count} 个目标文件");
+                    foreach (var file in targetFiles.Take(10))
+                    {
+                        string fullPath;
+                        string[] parts = file.Split('\\');
+                        if (parts.Length > 0 && parts[0].Length == 1 && !parts[0].Contains('.'))
+                        {
+                            string driveLetter = parts[0];
+                            string restPath = string.Join("\\", parts.Skip(1));
+                            fullPath = $"{driveLetter}:\\{restPath}";
+                        }
+                        else if (file.Contains(':'))
+                        {
+                            fullPath = file;
+                        }
+                        else
+                        {
+                            fullPath = Path.Combine(this.configManager.GamePath, file);
+                        }
+                        this.AppendDebugLog($"  - {file}: 目标存在={File.Exists(fullPath)}, 当前已是Mod文件={this.modStateManager.IsEnabled(modInfo.Name)}");
+                    }
+                    if (targetFiles.Count > 10)
+                    {
+                        this.AppendDebugLog($"  ... 还有 {targetFiles.Count - 10} 个文件未列出");
+                    }
 
                     // 2. 备份原始文件（此时文件还是原始状态）
                     var backupResult = this.backupManager.PrepareEnableModFromFiles(
